@@ -17,11 +17,11 @@ pub async fn synchronize_pr(
     {
         Ok(v) => v,
         Err(octocrab::Error::GitHub { source, .. }) => {
-            error!("{}/{}: github: {}", org, repo, source.message);
+            error!("github: {}", source.message);
             return Err(());
         }
         Err(error) => {
-            error!("{}/{}: failed to get pr refs: {:?}", org, repo, error);
+            error!("failed to get pr refs: {:?}", error);
             return Err(());
         }
     };
@@ -50,7 +50,7 @@ pub async fn synchronize_pr(
         error!("Failed to make tag: {:?}", error);
         return Err(());
     }
-    info!("{}/{}: Created {}", org, repo, &next_ref);
+    info!("Created {}", &next_ref);
 
     Ok(())
 }

@@ -13,7 +13,7 @@ use octocrab::{
     },
     Octocrab,
 };
-use tracing::{debug, error, info};
+use tracing::{debug, error, Instrument};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use chetter_app::synchronize_pr;
@@ -42,66 +42,74 @@ async fn handle_github_event(oc: &Octocrab, ev: &WebhookEvent) -> Result<(), ()>
         return Err(());
     };
 
-    let Some(org_repo) = repo.full_name.as_ref() else {
-        error!("Missing .repository.full_name");
-        return Err(());
-    };
-
     let Some(owner) = repo.owner.as_ref() else {
-        error!("{}: Missing .repository.owner", &org_repo);
+        error!("{}: Missing .repository.owner", &repo.name);
         return Err(());
     };
-
-    info!("{}: pull-request", &org_repo);
 
     let WebhookEventPayload::PullRequest(ref pr) = ev.specific else {
-        error!("{}: Failed to parse PullRequest", &org_repo);
+        error!(
+            "{}/{}: Unexpected payload: {:?}",
+            &owner.login, &repo.name, &ev.specific
+        );
         return Err(());
     };
 
-    let id = match ev.installation.as_ref() {
-        Some(EventInstallation::Minimal(v)) => v.id,
-        Some(EventInstallation::Full(v)) => v.id,
-        None => {
-            error!("{}: missing event.installation.id", &org_repo);
-            return Err(());
-        }
-    };
+    let span = tracing::span!(
+        tracing::Level::WARN,
+        "pr",
+        repo = format!("{}/{}", &owner.login, &repo.name),
+        pr = pr.number
+    );
+    async move {
+        let id = match ev.installation.as_ref() {
+            Some(EventInstallation::Minimal(v)) => v.id,
+            Some(EventInstallation::Full(v)) => v.id,
+            None => {
+                error!("missing event.installation.id");
+                return Err(());
+            }
+        };
 
-    let client = match installation_client(oc, id.0).await {
-        Ok(v) => v,
-        Err(error) => {
-            error!(
-                "{}: Failed to get installation client: {:?}",
-                &org_repo, error
-            );
-            return Err(());
-        }
-    };
+        let client = match installation_client(oc, id.0).await {
+            Ok(v) => v,
+            Err(error) => {
+                error!("Failed to get installation client: {:?}", error);
+                return Err(());
+            }
+        };
 
-    let ret = match pr.action {
-        PullRequestWebhookEventAction::Synchronize => {
-            synchronize_pr(
-                &client,
-                &owner.login,
-                &repo.name,
-                pr.number,
-                &pr.pull_request.head.sha,
-            )
-            .await
-        }
-        _ => {
-            debug!("{}: Ignoring PR action: {:?}", &org_repo, pr.action);
+        let ret = match pr.action {
+            PullRequestWebhookEventAction::Synchronize => {
+                let sub_span = tracing::span!(tracing::Level::INFO, "synchronize");
+                async move {
+                    synchronize_pr(
+                        &client,
+                        &owner.login,
+                        &repo.name,
+                        pr.number,
+                        &pr.pull_request.head.sha,
+                    )
+                    .await
+                }
+                .instrument(sub_span)
+                .await
+            }
+            _ => {
+                debug!("Ignoring PR action: {:?}", pr.action);
+                Ok(())
+            }
+        };
+
+        if ret.is_ok() {
             Ok(())
+        } else {
+            error!("failed to handle {:?}", pr.action);
+            Err(())
         }
-    };
-
-    if ret.is_ok() {
-        Ok(())
-    } else {
-        error!("{}: failed to handle {:?}", &org_repo, pr.action);
-        Err(())
     }
+    .instrument(span)
+    .await
 }
 
 async fn post_github_events(
