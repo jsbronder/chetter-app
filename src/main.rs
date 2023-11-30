@@ -5,18 +5,18 @@ use axum::{
 };
 use octocrab::{
     models::{
-        repos::Ref,
         webhook_events::{
             payload::{PullRequestWebhookEventAction, WebhookEventPayload},
             EventInstallation, WebhookEvent, WebhookEventType,
         },
         InstallationToken,
     },
-    params::repos::Reference,
     Octocrab,
 };
 use tracing::{debug, error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+use chetter_app::synchronize_pr;
 
 #[derive(Clone, Debug)]
 struct AppState {
@@ -59,11 +59,6 @@ async fn handle_github_event(oc: &Octocrab, ev: &WebhookEvent) -> Result<(), ()>
         return Err(());
     };
 
-    if pr.action != PullRequestWebhookEventAction::Synchronize {
-        info!("{}: Ignoring PR action: {:?}", &org_repo, pr.action);
-        return Ok(());
-    }
-
     let id = match ev.installation.as_ref() {
         Some(EventInstallation::Minimal(v)) => v.id,
         Some(EventInstallation::Full(v)) => v.id,
@@ -84,58 +79,29 @@ async fn handle_github_event(oc: &Octocrab, ev: &WebhookEvent) -> Result<(), ()>
         }
     };
 
-    let refs: Vec<Ref> = match client
-        .get(
-            format!(
-                "/repos/{}/git/matching-refs/chetter/{}/v",
-                &org_repo, pr.number
-            ),
-            None::<&()>,
-        )
-        .await
-    {
-        Ok(v) => v,
-        Err(octocrab::Error::GitHub { source, .. }) => {
-            error!("{}: github: {}", &org_repo, source.message);
-            return Err(());
+    let ret = match pr.action {
+        PullRequestWebhookEventAction::Synchronize => {
+            synchronize_pr(
+                &client,
+                &owner.login,
+                &repo.name,
+                pr.number,
+                &pr.pull_request.head.sha,
+            )
+            .await
         }
-        Err(error) => {
-            error!("{}: failed to get pr refs: {:?}", &org_repo, error);
-            return Err(());
+        _ => {
+            debug!("{}: Ignoring PR action: {:?}", &org_repo, pr.action);
+            Ok(())
         }
     };
 
-    // We use Commit so that we can use a full refspec, refs/chetter/..., that won't get modified
-    // by ref_url() or full_ref_url().
-    let next_ref: Reference = if refs.is_empty() {
-        Reference::Commit(format!("refs/chetter/{}/v1", pr.number))
+    if ret.is_ok() {
+        Ok(())
     } else {
-        let last_version = refs
-            .iter()
-            .map(|t| {
-                t.ref_field
-                    .split('v')
-                    .last()
-                    .unwrap_or("0")
-                    .parse()
-                    .unwrap_or(0)
-            })
-            .max()
-            .unwrap_or(0);
-        Reference::Commit(format!("refs/chetter/{}/v{}", pr.number, last_version + 1))
-    };
-
-    if let Err(error) = client
-        .repos(&owner.login, &repo.name)
-        .create_ref(&next_ref, &pr.pull_request.head.sha)
-        .await
-    {
-        error!("Failed to make tag: {:?}", error);
-        return Err(());
+        error!("{}: failed to handle {:?}", &org_repo, pr.action);
+        Err(())
     }
-    info!("{}: Created {}", &org_repo, &next_ref);
-
-    Ok(())
 }
 
 async fn post_github_events(
