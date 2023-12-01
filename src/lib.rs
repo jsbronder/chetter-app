@@ -89,6 +89,44 @@ pub async fn synchronize_pr(
     Ok(())
 }
 
+pub async fn bookmark_pr(
+    client: &Octocrab,
+    org: &str,
+    repo: &str,
+    pr: u64,
+    reviewer: &str,
+    sha: &str,
+) -> Result<(), ()> {
+    let Ok(refs) = matching_refs(client, org, repo, &format!("{}/{}", pr, reviewer)).await else {
+        return Err(());
+    };
+
+    if refs.iter().any(|t| t.ref_field.ends_with("-head")) {
+        let ref_name = format!("{}/{}-head", pr, reviewer);
+        let _ = update_ref(client, org, repo, &ref_name, sha).await;
+    } else {
+        let ref_name = format!("{}/{}-head", pr, reviewer);
+        let _ = create_ref(client, org, repo, &ref_name, sha).await;
+    }
+
+    let next_ref = if refs.is_empty() {
+        format!("{}/{}-v1", pr, reviewer)
+    } else {
+        let last_version: u32 = refs
+            .iter()
+            .filter_map(|t| t.ref_field.split('v').last()?.parse::<u32>().ok())
+            .max()
+            .unwrap_or(0);
+        format!("{}/{}-v{}", pr, reviewer, last_version + 1)
+    };
+
+    if create_ref(client, org, repo, &next_ref, sha).await.is_err() {
+        return Err(());
+    }
+
+    Ok(())
+}
+
 async fn update_ref(
     client: &Octocrab,
     org: &str,
