@@ -25,6 +25,33 @@ pub async fn open_pr(
     Ok(())
 }
 
+pub async fn close_pr(client: &Octocrab, org: &str, repo: &str, pr: u64) -> Result<(), ()> {
+    let Ok(refs) = matching_refs(client, org, repo, &format!("{}/", pr)).await else {
+        return Err(());
+    };
+
+    let mut failed = false;
+    for ref_obj in refs.iter() {
+        if delete_ref(
+            client,
+            org,
+            repo,
+            &ref_obj.ref_field.replace("refs/chetter/", ""),
+        )
+        .await
+        .is_err()
+        {
+            failed = true;
+        }
+    }
+
+    if failed {
+        return Err(());
+    }
+
+    Ok(())
+}
+
 pub async fn synchronize_pr(
     client: &Octocrab,
     org: &str,
