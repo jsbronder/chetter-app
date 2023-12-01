@@ -32,22 +32,8 @@ pub async fn synchronize_pr(
     pr: u64,
     sha: &str,
 ) -> Result<(), ()> {
-    let refs: Vec<Ref> = match client
-        .get(
-            format!("/repos/{}/{}/git/matching-refs/chetter/{}/", org, repo, pr),
-            None::<&()>,
-        )
-        .await
-    {
-        Ok(v) => v,
-        Err(octocrab::Error::GitHub { source, .. }) => {
-            error!("github: {}", source.message);
-            return Err(());
-        }
-        Err(error) => {
-            error!("failed to get pr refs: {:?}", error);
-            return Err(());
-        }
+    let Ok(refs) = matching_refs(client, org, repo, &format!("{}/", pr)).await else {
+        return Err(());
     };
 
     if refs.iter().any(|t| t.ref_field.ends_with("/head")) {
@@ -145,5 +131,33 @@ async fn create_ref(
     } else {
         info!("created refs/chetter/{} as {}", ref_name, &sha[0..8]);
         Ok(())
+    }
+}
+
+async fn matching_refs(
+    client: &Octocrab,
+    org: &str,
+    repo: &str,
+    ref_match: &str,
+) -> Result<Vec<Ref>, ()> {
+    match client
+        .get(
+            format!(
+                "/repos/{}/{}/git/matching-refs/chetter/{}",
+                org, repo, ref_match
+            ),
+            None::<&()>,
+        )
+        .await
+    {
+        Ok(v) => Ok(v),
+        Err(octocrab::Error::GitHub { source, .. }) => {
+            error!("failed to match chetter/{}: {}", ref_match, &source.message);
+            Err(())
+        }
+        Err(error) => {
+            error!("failed to match chetter/{}: {:?}", ref_match, &error);
+            Err(())
+        }
     }
 }
