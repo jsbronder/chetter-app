@@ -2,6 +2,29 @@ use octocrab::{models::repos::Ref, params::repos::Reference, Octocrab};
 use serde_json::json;
 use tracing::{error, info};
 
+pub async fn open_pr(
+    client: &Octocrab,
+    org: &str,
+    repo: &str,
+    pr: u64,
+    sha: &str,
+) -> Result<(), ()> {
+    let mut failed = false;
+    for ref_name in &["head", "v1"] {
+        if create_ref(client, org, repo, &format!("{}/{}", pr, ref_name), sha)
+            .await
+            .is_err()
+        {
+            failed = true;
+        }
+    }
+    if failed {
+        return Err(());
+    }
+
+    Ok(())
+}
+
 pub async fn synchronize_pr(
     client: &Octocrab,
     org: &str,
