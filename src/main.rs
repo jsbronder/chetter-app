@@ -5,6 +5,7 @@ use axum::{
 };
 use octocrab::{
     models::{
+        pulls::ReviewState,
         webhook_events::{
             payload::{PullRequestWebhookEventAction, WebhookEventPayload},
             EventInstallation, WebhookEvent, WebhookEventType,
@@ -16,7 +17,7 @@ use octocrab::{
 use tracing::{debug, error, Instrument};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use chetter_app::{close_pr, open_pr, synchronize_pr};
+use chetter_app::{bookmark_pr, close_pr, open_pr, synchronize_pr};
 
 #[derive(Clone, Debug)]
 struct AppState {
@@ -59,12 +60,74 @@ async fn installation_client(
     }
 }
 
-async fn handle_github_event(oc: &Octocrab, ev: &WebhookEvent) -> Result<(), ()> {
-    if ev.kind != WebhookEventType::PullRequest {
-        error!("Unexpected webhook event: {:?}", ev.kind);
+async fn handle_pull_request_review(oc: &Octocrab, ev: &WebhookEvent) -> Result<(), ()> {
+    let Some(repo) = ev.repository.as_ref() else {
+        error!("Missing .repository");
         return Err(());
-    }
+    };
 
+    let Some(owner) = repo.owner.as_ref() else {
+        error!("{}: Missing .repository.owner", &repo.name);
+        return Err(());
+    };
+
+    let WebhookEventPayload::PullRequestReview(ref payload) = ev.specific else {
+        error!(
+            "{}/{}: Unexpected payload: {:?}",
+            &owner.login, &repo.name, &ev.specific
+        );
+        return Err(());
+    };
+
+    let Some(reviewer) = payload.review.user.as_ref() else {
+        error!("{}/{}: Missing .review.user", &owner.login, &repo.name);
+        return Err(());
+    };
+
+    let span = tracing::span!(
+        tracing::Level::WARN,
+        "review",
+        repo = format!("{}/{}", &owner.login, &repo.name),
+        pr = payload.pull_request.number,
+        reviewer = reviewer.login
+    );
+
+    async move {
+        let Ok(client) = installation_client(oc, &ev.installation).await else {
+            return Err(());
+        };
+
+        let Some(ref sha) = payload.review.commit_id else {
+            error!("missing .review.commit_id");
+            return Err(());
+        };
+
+        let ret = match payload.review.state {
+            Some(ReviewState::Approved | ReviewState::ChangesRequested) => {
+                bookmark_pr(
+                    &client,
+                    &owner.login,
+                    &repo.name,
+                    payload.pull_request.number,
+                    &reviewer.login,
+                    sha,
+                )
+                .await
+            }
+            _ => Ok(()),
+        };
+
+        if ret.is_ok() {
+            Ok(())
+        } else {
+            Err(())
+        }
+    }
+    .instrument(span)
+    .await
+}
+
+async fn handle_pull_request(oc: &Octocrab, ev: &WebhookEvent) -> Result<(), ()> {
     let Some(repo) = ev.repository.as_ref() else {
         error!("Missing .repository");
         return Err(());
@@ -188,7 +251,15 @@ async fn post_github_events(
         }
     };
 
-    if handle_github_event(&state.oc, &event).await.is_ok() {
+    let ret = match event.kind {
+        WebhookEventType::PullRequest => handle_pull_request(&state.oc, &event).await.is_ok(),
+        WebhookEventType::PullRequestReview => {
+            handle_pull_request_review(&state.oc, &event).await.is_ok()
+        }
+        _ => true,
+    };
+
+    if ret {
         (StatusCode::OK, "".to_string())
     } else {
         (StatusCode::INTERNAL_SERVER_ERROR, "".to_string())
