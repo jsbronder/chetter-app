@@ -23,12 +23,40 @@ struct AppState {
     oc: Octocrab,
 }
 
-async fn installation_client(oc: &Octocrab, id: u64) -> Result<Octocrab, octocrab::Error> {
+async fn installation_client(
+    oc: &Octocrab,
+    installation: &Option<EventInstallation>,
+) -> Result<Octocrab, ()> {
+    let id = match installation.as_ref() {
+        Some(EventInstallation::Minimal(v)) => v.id.0,
+        Some(EventInstallation::Full(v)) => v.id.0,
+        None => {
+            error!("missing event.installation.id");
+            return Err(());
+        }
+    };
     let url = format!("/app/installations/{}/access_tokens", id);
-    let token: InstallationToken = oc.post(url, None::<&()>).await?;
-    octocrab::OctocrabBuilder::new()
+    let token: InstallationToken = match oc.post(url, None::<&()>).await {
+        Ok(v) => v,
+        Err(octocrab::Error::GitHub { source, .. }) => {
+            error!("failed to get access_token for {}: {}", id, &source.message);
+            return Err(());
+        }
+        Err(error) => {
+            error!("failed to get access_token for {}: {:?}", id, &error);
+            return Err(());
+        }
+    };
+    match octocrab::OctocrabBuilder::new()
         .personal_token(token.token)
         .build()
+    {
+        Ok(v) => Ok(v),
+        Err(error) => {
+            error!("failed to build installation client: {:?}", &error);
+            Err(())
+        }
+    }
 }
 
 async fn handle_github_event(oc: &Octocrab, ev: &WebhookEvent) -> Result<(), ()> {
@@ -62,21 +90,8 @@ async fn handle_github_event(oc: &Octocrab, ev: &WebhookEvent) -> Result<(), ()>
         pr = pr.number
     );
     async move {
-        let id = match ev.installation.as_ref() {
-            Some(EventInstallation::Minimal(v)) => v.id,
-            Some(EventInstallation::Full(v)) => v.id,
-            None => {
-                error!("missing event.installation.id");
-                return Err(());
-            }
-        };
-
-        let client = match installation_client(oc, id.0).await {
-            Ok(v) => v,
-            Err(error) => {
-                error!("Failed to get installation client: {:?}", error);
-                return Err(());
-            }
+        let Ok(client) = installation_client(oc, &ev.installation).await else {
+            return Err(());
         };
 
         let ret = match pr.action {
