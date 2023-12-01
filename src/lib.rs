@@ -134,6 +134,35 @@ async fn create_ref(
     }
 }
 
+async fn delete_ref(client: &Octocrab, org: &str, repo: &str, ref_name: &str) -> Result<(), ()> {
+    match client
+        ._delete(
+            format!("/repos/{}/{}/git/refs/chetter/{}", org, repo, ref_name),
+            None::<&()>,
+        )
+        .await
+    {
+        Ok(resp) => match octocrab::map_github_error(resp).await {
+            Err(octocrab::Error::GitHub { source, .. }) => {
+                error!("failed to delete chetter/{}: {}", ref_name, &source.message);
+                Err(())
+            }
+            Err(error) => {
+                error!("failed to delete chetter/{}: {:?}", ref_name, &error);
+                Err(())
+            }
+            _ => {
+                info!("deleted chetter/{}", ref_name);
+                Ok(())
+            }
+        },
+        Err(error) => {
+            error!("failed to delete chetter/{}: {:?}", ref_name, &error);
+            Err(())
+        }
+    }
+}
+
 async fn matching_refs(
     client: &Octocrab,
     org: &str,
