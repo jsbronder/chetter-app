@@ -16,7 +16,7 @@ use octocrab::{
 use tracing::{debug, error, Instrument};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use chetter_app::{open_pr, synchronize_pr};
+use chetter_app::{close_pr, open_pr, synchronize_pr};
 
 #[derive(Clone, Debug)]
 struct AppState {
@@ -110,6 +110,13 @@ async fn handle_github_event(oc: &Octocrab, ev: &WebhookEvent) -> Result<(), ()>
                 .instrument(sub_span)
                 .await
             }
+            PullRequestWebhookEventAction::Closed => {
+                let sub_span = tracing::span!(tracing::Level::INFO, "close");
+                async move { close_pr(&client, &owner.login, &repo.name, pr.number).await }
+                    .instrument(sub_span)
+                    .await
+            }
+
             _ => {
                 debug!("Ignoring PR action: {:?}", pr.action);
                 Ok(())
