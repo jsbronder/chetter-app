@@ -3,6 +3,7 @@ use axum::{
     response::IntoResponse,
     routing::post,
 };
+use getopts::Options;
 use octocrab::{
     models::{
         pulls::ReviewState,
@@ -14,6 +15,7 @@ use octocrab::{
     },
     Octocrab,
 };
+use serde::Deserialize;
 use tracing::{debug, error, Instrument};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -22,6 +24,12 @@ use chetter_app::{bookmark_pr, close_pr, open_pr, synchronize_pr};
 #[derive(Clone, Debug)]
 struct AppState {
     oc: Octocrab,
+}
+
+#[derive(Deserialize, Debug)]
+struct Config {
+    app_id: u64,
+    private_key: String,
 }
 
 async fn installation_client(
@@ -266,17 +274,47 @@ async fn post_github_events(
     }
 }
 
-fn getenv(var: &str) -> String {
-    let err = format!("Missing environment variable: {var}");
-    std::env::var(var).expect(&err)
-}
-
 #[tokio::main]
 async fn main() {
-    let app_id = getenv("GH_APP_ID").parse::<u64>().unwrap().into();
-    let key_str = std::fs::read_to_string(getenv("GH_APP_PEM")).expect("Failed to read GH_APP_PEM");
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(key_str.as_bytes()).unwrap();
-    let octocrab = Octocrab::builder().app(app_id, key).build().unwrap();
+    let args: Vec<String> = std::env::args().collect();
+
+    let mut opts = Options::new();
+    opts.optflag("h", "help", "print this help menu");
+    opts.optopt("c", "config", "path to config file", "FILE");
+    let matches = opts.parse(&args[1..]).unwrap_or_else(|err| {
+        eprintln!("Failed to parse commandline arguments: {}", &err);
+        std::process::exit(1);
+    });
+
+    if matches.opt_present("h") {
+        println!("{}", opts.usage("Usage: chetter-app [OPTIONS]"));
+        std::process::exit(0);
+    }
+
+    let Some(config_path) = matches.opt_str("c") else {
+        eprintln!("Error: config file (-c,--config) required");
+        std::process::exit(1);
+    };
+
+    let config_str = std::fs::read_to_string(&config_path).unwrap_or_else(|err| {
+        eprintln!("Failed to read '{}': {}", &config_path, &err);
+        std::process::exit(1);
+    });
+
+    let config: Config = toml::from_str(&config_str).unwrap();
+    let key = jsonwebtoken::EncodingKey::from_rsa_pem(config.private_key.as_bytes())
+        .unwrap_or_else(|err| {
+            eprintln!(
+                "Failed to parse `private_key` in {}: {}",
+                &config_path, &err
+            );
+            std::process::exit(1);
+        });
+
+    let octocrab = Octocrab::builder()
+        .app(config.app_id.into(), key)
+        .build()
+        .unwrap();
     let app_state = AppState { oc: octocrab };
 
     tracing_subscriber::registry()
