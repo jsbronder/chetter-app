@@ -16,6 +16,7 @@ use octocrab::{
     Octocrab,
 };
 use serde::Deserialize;
+use tokio::signal;
 use tracing::{debug, error, Instrument};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -274,6 +275,28 @@ async fn post_github_events(
     }
 }
 
+async fn shutdown_signal() {
+    let sigint = async {
+        signal::ctrl_c().await.unwrap_or_else(|err| {
+            panic!("failed to install SIGINT handler: {}", err);
+        });
+    };
+
+    let sigterm = async {
+        signal::unix::signal(signal::unix::SignalKind::terminate())
+            .unwrap_or_else(|err| {
+                panic!("failed to install SIGINT handler: {}", err);
+            })
+            .recv()
+            .await;
+    };
+
+    tokio::select! {
+        _ = sigint => {println!("shutdown due to sigint")},
+        _ = sigterm => {println!("shutdown due to sigterm")},
+    }
+}
+
 #[tokio::main]
 async fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -331,6 +354,7 @@ async fn main() {
 
     axum::Server::bind(&"0.0.0.0:3333".parse().unwrap())
         .serve(app.into_make_service())
+        .with_graceful_shutdown(shutdown_signal())
         .await
         .unwrap();
 }
