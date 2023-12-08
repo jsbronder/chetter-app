@@ -4,16 +4,12 @@ use axum::{
     routing::post,
 };
 use getopts::Options;
-use octocrab::{
-    models::{
-        pulls::ReviewState,
-        webhook_events::{
-            payload::{PullRequestWebhookEventAction, WebhookEventPayload},
-            EventInstallation, WebhookEvent, WebhookEventType,
-        },
-        InstallationToken,
+use octocrab::models::{
+    pulls::ReviewState,
+    webhook_events::{
+        payload::{PullRequestWebhookEventAction, WebhookEventPayload},
+        WebhookEvent, WebhookEventType,
     },
-    Octocrab,
 };
 use tokio::signal;
 use tracing::{debug, error, Instrument};
@@ -21,79 +17,30 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use chetter_app::{bookmark_pr, close_pr, github::AppClient, open_pr, synchronize_pr};
 
-async fn installation_client(
-    oc: &Octocrab,
-    installation: &Option<EventInstallation>,
-) -> Result<Octocrab, ()> {
-    let id = match installation.as_ref() {
-        Some(EventInstallation::Minimal(v)) => v.id.0,
-        Some(EventInstallation::Full(v)) => v.id.0,
-        None => {
-            error!("missing event.installation.id");
-            return Err(());
-        }
-    };
-    let url = format!("/app/installations/{}/access_tokens", id);
-    let token: InstallationToken = match oc.post(url, None::<&()>).await {
-        Ok(v) => v,
-        Err(octocrab::Error::GitHub { source, .. }) => {
-            error!("failed to get access_token for {}: {}", id, &source.message);
-            return Err(());
-        }
-        Err(error) => {
-            error!("failed to get access_token for {}: {:?}", id, &error);
-            return Err(());
-        }
-    };
-    match octocrab::OctocrabBuilder::new()
-        .personal_token(token.token)
-        .build()
-    {
-        Ok(v) => Ok(v),
-        Err(error) => {
-            error!("failed to build installation client: {:?}", &error);
-            Err(())
-        }
-    }
-}
-
-async fn handle_pull_request_review(app_client: AppClient, ev: &WebhookEvent) -> Result<(), ()> {
-    let Some(repo) = ev.repository.as_ref() else {
-        error!("Missing .repository");
-        return Err(());
-    };
-
-    let Some(owner) = repo.owner.as_ref() else {
-        error!("{}: Missing .repository.owner", &repo.name);
+async fn handle_pull_request_review(app_client: AppClient, ev: WebhookEvent) -> Result<(), ()> {
+    let Ok(repo_client) = app_client.repo_client(&ev).await else {
         return Err(());
     };
 
     let WebhookEventPayload::PullRequestReview(ref payload) = ev.specific else {
-        error!(
-            "{}/{}: Unexpected payload: {:?}",
-            &owner.login, &repo.name, &ev.specific
-        );
+        error!("Unexpected payload: {:?}", &ev.specific);
         return Err(());
     };
 
     let Some(reviewer) = payload.review.user.as_ref() else {
-        error!("{}/{}: Missing .review.user", &owner.login, &repo.name);
+        error!("Missing .review.user");
         return Err(());
     };
 
     let span = tracing::span!(
         tracing::Level::WARN,
         "review",
-        repo = format!("{}/{}", &owner.login, &repo.name),
+        repo = format!("{}/{}", &repo_client.org, &repo_client.repo),
         pr = payload.pull_request.number,
         reviewer = reviewer.login
     );
 
     async move {
-        let Ok(client) = installation_client(&app_client.crab, &ev.installation).await else {
-            return Err(());
-        };
-
         let Some(ref sha) = payload.review.commit_id else {
             error!("missing .review.commit_id");
             return Err(());
@@ -102,9 +49,9 @@ async fn handle_pull_request_review(app_client: AppClient, ev: &WebhookEvent) ->
         let ret = match payload.review.state {
             Some(ReviewState::Approved | ReviewState::ChangesRequested) => {
                 bookmark_pr(
-                    &client,
-                    &owner.login,
-                    &repo.name,
+                    &repo_client.crab,
+                    &repo_client.org,
+                    &repo_client.repo,
                     payload.pull_request.number,
                     &reviewer.login,
                     sha,
@@ -124,44 +71,31 @@ async fn handle_pull_request_review(app_client: AppClient, ev: &WebhookEvent) ->
     .await
 }
 
-async fn handle_pull_request(app_client: AppClient, ev: &WebhookEvent) -> Result<(), ()> {
-    let Some(repo) = ev.repository.as_ref() else {
-        error!("Missing .repository");
-        return Err(());
-    };
-
-    let Some(owner) = repo.owner.as_ref() else {
-        error!("{}: Missing .repository.owner", &repo.name);
+async fn handle_pull_request(app_client: AppClient, ev: WebhookEvent) -> Result<(), ()> {
+    let Ok(repo_client) = app_client.repo_client(&ev).await else {
         return Err(());
     };
 
     let WebhookEventPayload::PullRequest(ref pr) = ev.specific else {
-        error!(
-            "{}/{}: Unexpected payload: {:?}",
-            &owner.login, &repo.name, &ev.specific
-        );
+        error!("Unexpected payload: {:?}", &ev.specific);
         return Err(());
     };
 
     let span = tracing::span!(
         tracing::Level::WARN,
         "pr",
-        repo = format!("{}/{}", &owner.login, &repo.name),
+        repo = format!("{}/{}", &repo_client.org, &repo_client.repo),
         pr = pr.number
     );
     async move {
-        let Ok(client) = installation_client(&app_client.crab, &ev.installation).await else {
-            return Err(());
-        };
-
         let ret = match pr.action {
             PullRequestWebhookEventAction::Synchronize => {
                 let sub_span = tracing::span!(tracing::Level::INFO, "synchronize");
                 async move {
                     synchronize_pr(
-                        &client,
-                        &owner.login,
-                        &repo.name,
+                        &repo_client.crab,
+                        &repo_client.org,
+                        &repo_client.repo,
                         pr.number,
                         &pr.pull_request.head.sha,
                     )
@@ -174,9 +108,9 @@ async fn handle_pull_request(app_client: AppClient, ev: &WebhookEvent) -> Result
                 let sub_span = tracing::span!(tracing::Level::INFO, "open");
                 async move {
                     open_pr(
-                        &client,
-                        &owner.login,
-                        &repo.name,
+                        &repo_client.crab,
+                        &repo_client.org,
+                        &repo_client.repo,
                         pr.number,
                         &pr.pull_request.head.sha,
                     )
@@ -187,9 +121,17 @@ async fn handle_pull_request(app_client: AppClient, ev: &WebhookEvent) -> Result
             }
             PullRequestWebhookEventAction::Closed => {
                 let sub_span = tracing::span!(tracing::Level::INFO, "close");
-                async move { close_pr(&client, &owner.login, &repo.name, pr.number).await }
-                    .instrument(sub_span)
+                async move {
+                    close_pr(
+                        &repo_client.crab,
+                        &repo_client.org,
+                        &repo_client.repo,
+                        pr.number,
+                    )
                     .await
+                }
+                .instrument(sub_span)
+                .await
             }
 
             _ => {
@@ -249,9 +191,9 @@ async fn post_github_events(
     };
 
     let ret = match event.kind {
-        WebhookEventType::PullRequest => handle_pull_request(app_client, &event).await.is_ok(),
+        WebhookEventType::PullRequest => handle_pull_request(app_client, event).await.is_ok(),
         WebhookEventType::PullRequestReview => {
-            handle_pull_request_review(app_client, &event).await.is_ok()
+            handle_pull_request_review(app_client, event).await.is_ok()
         }
         _ => true,
     };

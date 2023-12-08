@@ -11,7 +11,7 @@ use crate::error::ChetterError;
 
 #[derive(Debug, Clone)]
 pub struct AppClient {
-    pub crab: Octocrab,
+    crab: Octocrab,
 }
 
 impl AppClient {
