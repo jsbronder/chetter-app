@@ -15,23 +15,11 @@ use octocrab::{
     },
     Octocrab,
 };
-use serde::Deserialize;
 use tokio::signal;
 use tracing::{debug, error, Instrument};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use chetter_app::{bookmark_pr, close_pr, open_pr, synchronize_pr};
-
-#[derive(Clone, Debug)]
-struct AppState {
-    oc: Octocrab,
-}
-
-#[derive(Deserialize, Debug)]
-struct Config {
-    app_id: u64,
-    private_key: String,
-}
+use chetter_app::{bookmark_pr, close_pr, github::AppClient, open_pr, synchronize_pr};
 
 async fn installation_client(
     oc: &Octocrab,
@@ -69,7 +57,7 @@ async fn installation_client(
     }
 }
 
-async fn handle_pull_request_review(oc: &Octocrab, ev: &WebhookEvent) -> Result<(), ()> {
+async fn handle_pull_request_review(app_client: AppClient, ev: &WebhookEvent) -> Result<(), ()> {
     let Some(repo) = ev.repository.as_ref() else {
         error!("Missing .repository");
         return Err(());
@@ -102,7 +90,7 @@ async fn handle_pull_request_review(oc: &Octocrab, ev: &WebhookEvent) -> Result<
     );
 
     async move {
-        let Ok(client) = installation_client(oc, &ev.installation).await else {
+        let Ok(client) = installation_client(&app_client.crab, &ev.installation).await else {
             return Err(());
         };
 
@@ -136,7 +124,7 @@ async fn handle_pull_request_review(oc: &Octocrab, ev: &WebhookEvent) -> Result<
     .await
 }
 
-async fn handle_pull_request(oc: &Octocrab, ev: &WebhookEvent) -> Result<(), ()> {
+async fn handle_pull_request(app_client: AppClient, ev: &WebhookEvent) -> Result<(), ()> {
     let Some(repo) = ev.repository.as_ref() else {
         error!("Missing .repository");
         return Err(());
@@ -162,7 +150,7 @@ async fn handle_pull_request(oc: &Octocrab, ev: &WebhookEvent) -> Result<(), ()>
         pr = pr.number
     );
     async move {
-        let Ok(client) = installation_client(oc, &ev.installation).await else {
+        let Ok(client) = installation_client(&app_client.crab, &ev.installation).await else {
             return Err(());
         };
 
@@ -222,7 +210,7 @@ async fn handle_pull_request(oc: &Octocrab, ev: &WebhookEvent) -> Result<(), ()>
 }
 
 async fn post_github_events(
-    axum::extract::State(state): axum::extract::State<AppState>,
+    axum::extract::State(app_client): axum::extract::State<AppClient>,
     headers: HeaderMap,
     body: String,
 ) -> impl IntoResponse {
@@ -261,9 +249,9 @@ async fn post_github_events(
     };
 
     let ret = match event.kind {
-        WebhookEventType::PullRequest => handle_pull_request(&state.oc, &event).await.is_ok(),
+        WebhookEventType::PullRequest => handle_pull_request(app_client, &event).await.is_ok(),
         WebhookEventType::PullRequestReview => {
-            handle_pull_request_review(&state.oc, &event).await.is_ok()
+            handle_pull_request_review(app_client, &event).await.is_ok()
         }
         _ => true,
     };
@@ -319,26 +307,10 @@ async fn main() {
         std::process::exit(1);
     };
 
-    let config_str = std::fs::read_to_string(&config_path).unwrap_or_else(|err| {
-        eprintln!("Failed to read '{}': {}", &config_path, &err);
+    let app_client = AppClient::new(config_path).unwrap_or_else(|err| {
+        eprintln!("{}", err);
         std::process::exit(1);
     });
-
-    let config: Config = toml::from_str(&config_str).unwrap();
-    let key = jsonwebtoken::EncodingKey::from_rsa_pem(config.private_key.as_bytes())
-        .unwrap_or_else(|err| {
-            eprintln!(
-                "Failed to parse `private_key` in {}: {}",
-                &config_path, &err
-            );
-            std::process::exit(1);
-        });
-
-    let octocrab = Octocrab::builder()
-        .app(config.app_id.into(), key)
-        .build()
-        .unwrap();
-    let app_state = AppState { oc: octocrab };
 
     tracing_subscriber::registry()
         .with(
@@ -350,7 +322,7 @@ async fn main() {
 
     let app = axum::Router::new()
         .route("/github/events", post(post_github_events))
-        .with_state(app_state);
+        .with_state(app_client);
 
     axum::Server::bind(&"0.0.0.0:3333".parse().unwrap())
         .serve(app.into_make_service())
