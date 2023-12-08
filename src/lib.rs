@@ -2,6 +2,8 @@ use octocrab::{models::repos::Ref, params::repos::Reference, Octocrab};
 use serde_json::json;
 use tracing::{error, info};
 
+pub mod error;
+
 pub async fn open_pr(
     client: &Octocrab,
     org: &str,
