@@ -1,5 +1,6 @@
 #[derive(Debug)]
 pub enum ChetterError {
+    GithubParseError(String),
     IOError(std::io::Error),
     JSONWebTokenError(jsonwebtoken::errors::Error),
     Octocrab(octocrab::Error),
@@ -35,6 +36,7 @@ impl std::error::Error for ChetterError {}
 impl std::fmt::Display for ChetterError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
+            ChetterError::GithubParseError(e) => write!(f, "{}", e),
             ChetterError::IOError(e) => write!(f, "{}", e),
             ChetterError::JSONWebTokenError(e) => write!(f, "{}", e),
             ChetterError::Octocrab(e) => write!(f, "{}", e),
