@@ -1,4 +1,10 @@
-use octocrab::Octocrab;
+use octocrab::{
+    models::{
+        webhook_events::{EventInstallation, WebhookEvent},
+        InstallationToken,
+    },
+    Octocrab,
+};
 use serde::Deserialize;
 
 use crate::error::ChetterError;
@@ -24,4 +30,47 @@ impl AppClient {
 
         Ok(Self { crab })
     }
+
+    pub async fn repo_client(self, ev: &WebhookEvent) -> Result<RepositoryClient, ChetterError> {
+        let repo = ev
+            .repository
+            .as_ref()
+            .ok_or(ChetterError::GithubParseError("missing .repository".into()))?;
+
+        let org = repo
+            .owner
+            .as_ref()
+            .ok_or(ChetterError::GithubParseError(
+                "missing .repository.owner".into(),
+            ))?
+            .login
+            .clone();
+
+        let id = match ev.installation.as_ref() {
+            Some(EventInstallation::Minimal(v)) => v.id.0,
+            Some(EventInstallation::Full(v)) => v.id.0,
+            None => {
+                return Err(ChetterError::GithubParseError(
+                    "missing event.installation.id".into(),
+                ));
+            }
+        };
+        let url = format!("/app/installations/{}/access_tokens", id);
+        let token: InstallationToken = self.crab.post(url, None::<&()>).await?;
+        let crab = octocrab::OctocrabBuilder::new()
+            .personal_token(token.token)
+            .build()?;
+
+        Ok(RepositoryClient {
+            crab,
+            org,
+            repo: repo.name.clone(),
+        })
+    }
+}
+
+pub struct RepositoryClient {
+    pub crab: Octocrab,
+    pub org: String,
+    pub repo: String,
 }
