@@ -3,6 +3,7 @@ use serde_json::json;
 use tracing::{error, info};
 
 pub mod error;
+pub mod github;
 
 pub async fn open_pr(
     client: &Octocrab,
