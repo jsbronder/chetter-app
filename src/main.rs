@@ -49,9 +49,7 @@ async fn handle_pull_request_review(app_client: AppClient, ev: WebhookEvent) -> 
         let ret = match payload.review.state {
             Some(ReviewState::Approved | ReviewState::ChangesRequested) => {
                 bookmark_pr(
-                    &repo_client.crab,
-                    &repo_client.org,
-                    &repo_client.repo,
+                    repo_client,
                     payload.pull_request.number,
                     &reviewer.login,
                     sha,
@@ -92,46 +90,22 @@ async fn handle_pull_request(app_client: AppClient, ev: WebhookEvent) -> Result<
             PullRequestWebhookEventAction::Synchronize => {
                 let sub_span = tracing::span!(tracing::Level::INFO, "synchronize");
                 async move {
-                    synchronize_pr(
-                        &repo_client.crab,
-                        &repo_client.org,
-                        &repo_client.repo,
-                        pr.number,
-                        &pr.pull_request.head.sha,
-                    )
+                        synchronize_pr(repo_client, pr.number, &pr.pull_request.head.sha).await
+                    }
+                    .instrument(sub_span)
                     .await
-                }
-                .instrument(sub_span)
-                .await
             }
             PullRequestWebhookEventAction::Opened => {
                 let sub_span = tracing::span!(tracing::Level::INFO, "open");
-                async move {
-                    open_pr(
-                        &repo_client.crab,
-                        &repo_client.org,
-                        &repo_client.repo,
-                        pr.number,
-                        &pr.pull_request.head.sha,
-                    )
+                async move { open_pr(repo_client, pr.number, &pr.pull_request.head.sha).await }
+                    .instrument(sub_span)
                     .await
-                }
-                .instrument(sub_span)
-                .await
             }
             PullRequestWebhookEventAction::Closed => {
                 let sub_span = tracing::span!(tracing::Level::INFO, "close");
-                async move {
-                    close_pr(
-                        &repo_client.crab,
-                        &repo_client.org,
-                        &repo_client.repo,
-                        pr.number,
-                    )
+                async move { close_pr(repo_client, pr.number).await }
+                    .instrument(sub_span)
                     .await
-                }
-                .instrument(sub_span)
-                .await
             }
 
             _ => {
