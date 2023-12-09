@@ -35,7 +35,7 @@ async fn handle_pull_request_review(app_client: AppClient, ev: WebhookEvent) -> 
     let span = tracing::span!(
         tracing::Level::WARN,
         "review",
-        repo = format!("{}/{}", &repo_client.org, &repo_client.repo),
+        repo = repo_client.full_name(),
         pr = payload.pull_request.number,
         reviewer = reviewer.login
     );
@@ -82,7 +82,7 @@ async fn handle_pull_request(app_client: AppClient, ev: WebhookEvent) -> Result<
     let span = tracing::span!(
         tracing::Level::WARN,
         "pr",
-        repo = format!("{}/{}", &repo_client.org, &repo_client.repo),
+        repo = repo_client.full_name(),
         pr = pr.number
     );
     async move {

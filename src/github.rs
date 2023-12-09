@@ -79,9 +79,15 @@ impl AppClient {
 }
 
 pub struct RepositoryClient {
-    pub crab: Octocrab,
-    pub org: String,
-    pub repo: String,
+    crab: Octocrab,
+    org: String,
+    repo: String,
+}
+
+impl RepositoryClient {
+    pub fn full_name(&self) -> String {
+        format!("{}/{}", self.org, self.repo)
+    }
 }
 
 #[async_trait]
