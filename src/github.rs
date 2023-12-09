@@ -1,13 +1,22 @@
+use async_trait::async_trait;
 use octocrab::{
     models::{
         webhook_events::{EventInstallation, WebhookEvent},
         InstallationToken,
     },
+    params::repos::Reference,
     Octocrab,
 };
 use serde::Deserialize;
+use serde_json::json;
+use tracing::{error, info, warn};
 
 use crate::error::ChetterError;
+
+pub struct Ref {
+    pub full_name: String,
+    pub sha: String,
+}
 
 #[derive(Debug, Clone)]
 pub struct AppClient {
@@ -73,4 +82,114 @@ pub struct RepositoryClient {
     pub crab: Octocrab,
     pub org: String,
     pub repo: String,
+}
+
+#[async_trait]
+pub trait RepositoryController {
+    async fn create_ref(&self, ref_name: &str, sha: &str) -> Result<(), ChetterError>;
+    async fn update_ref(&self, ref_name: &str, sha: &str) -> Result<(), ChetterError>;
+    async fn delete_ref(&self, ref_name: &str) -> Result<(), ChetterError>;
+    async fn matching_refs(&self, search: &str) -> Result<Vec<Ref>, ChetterError>;
+}
+
+#[async_trait]
+impl RepositoryController for RepositoryClient {
+    async fn create_ref(&self, ref_name: &str, sha: &str) -> Result<(), ChetterError> {
+        // We use Commit so that we can use a full refspec, refs/chetter/..., that won't get
+        // modified by ref_url() or full_ref_url().
+        let full_ref = Reference::Commit(format!("refs/chetter/{}", ref_name));
+        match self
+            .crab
+            .repos(&self.org, &self.repo)
+            .create_ref(&full_ref, sha)
+            .await
+        {
+            Ok(_) => {
+                info!("created refs/chetter/{} as {}", ref_name, &sha[0..8]);
+                Ok(())
+            }
+            Err(error) => {
+                error!("Failed to create {} as {}", ref_name, &sha[0..8]);
+                Err(ChetterError::Octocrab(error))
+            }
+        }
+    }
+
+    async fn update_ref(&self, ref_name: &str, sha: &str) -> Result<(), ChetterError> {
+        let req = json!({"sha": &sha, "force": true});
+        let url = format!(
+            "/repos/{}/{}/git/refs/chetter/{}",
+            self.org, self.repo, ref_name
+        );
+        match self.crab.post(&url, Some(&req)).await {
+            Ok::<octocrab::models::repos::Ref, _>(_) => {
+                info!("updated refs/chetter/{} as {}", ref_name, &sha[0..8]);
+                Ok(())
+            }
+            Err(error) => {
+                error!("Failed to update {} to {}", ref_name, &sha[0..8]);
+                Err(ChetterError::Octocrab(error))
+            }
+        }
+    }
+
+    async fn delete_ref(&self, ref_name: &str) -> Result<(), ChetterError> {
+        match self
+            .crab
+            ._delete(
+                format!(
+                    "/repos/{}/{}/git/refs/chetter/{}",
+                    self.org, self.repo, ref_name
+                ),
+                None::<&()>,
+            )
+            .await
+        {
+            Ok(_) => {
+                info!("deleted chetter/{}", ref_name);
+                Ok(())
+            }
+            Err(error) => {
+                error!("failed to delete chetter/{}: {:?}", ref_name, &error);
+                Err(ChetterError::Octocrab(error))
+            }
+        }
+    }
+
+    async fn matching_refs(&self, search: &str) -> Result<Vec<Ref>, ChetterError> {
+        match self
+            .crab
+            .get(
+                format!(
+                    "/repos/{}/{}/git/matching-refs/chetter/{}",
+                    self.org, self.repo, search
+                ),
+                None::<&()>,
+            )
+            .await
+        {
+            Ok::<Vec<octocrab::models::repos::Ref>, _>(v) => Ok(v
+                .iter()
+                .filter_map(|r| {
+                    let sha = match &r.object {
+                        octocrab::models::repos::Object::Commit { sha, .. } => sha,
+                        octocrab::models::repos::Object::Tag { sha, .. } => sha,
+                        _ => {
+                            warn!("Skipping unmatched: {:?}", r);
+                            return None;
+                        }
+                    };
+
+                    Some(Ref {
+                        full_name: r.ref_field.clone(),
+                        sha: sha.clone(),
+                    })
+                })
+                .collect()),
+            Err(error) => {
+                error!("failed to match chetter/{}: {}", search, error);
+                Err(ChetterError::Octocrab(error))
+            }
+        }
+    }
 }
