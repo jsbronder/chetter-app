@@ -11,8 +11,12 @@ use serde::Deserialize;
 use serde_json::json;
 use tracing::{error, info, warn};
 
+#[cfg(test)]
+use mockall::automock;
+
 use crate::error::ChetterError;
 
+#[derive(Debug, Clone)]
 pub struct Ref {
     pub full_name: String,
     pub sha: String,
@@ -90,6 +94,7 @@ impl RepositoryClient {
     }
 }
 
+#[cfg_attr(test, automock)]
 #[async_trait]
 pub trait RepositoryController {
     async fn create_ref(&self, ref_name: &str, sha: &str) -> Result<(), ChetterError>;

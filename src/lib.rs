@@ -114,3 +114,213 @@ pub async fn bookmark_pr(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use mockall::predicate::*;
+
+    use super::*;
+    use crate::github::{MockRepositoryController, Ref};
+
+    #[tokio::test]
+    async fn test_open_pr() {
+        let mut mock = MockRepositoryController::new();
+        let sha = "abcd";
+        let num = 1234;
+
+        mock.expect_create_ref()
+            .times(1)
+            .with(eq(format!("{num}/v1")), eq(sha))
+            .returning(|_, _| Ok(()));
+        mock.expect_create_ref()
+            .times(1)
+            .with(eq(format!("{num}/head")), eq(sha))
+            .returning(|_, _| Ok(()));
+        let r = open_pr(mock, num, sha).await;
+        assert!(r.is_ok())
+    }
+
+    #[tokio::test]
+    async fn test_close_pr() {
+        let mut mock = MockRepositoryController::new();
+        let num = 1234;
+        let refs = vec![
+            format!("{num}/v1"),
+            format!("{num}/v2"),
+            format!("{num}/head"),
+            format!("{num}/reviewer-v1"),
+            format!("{num}/reviewer-v2"),
+            format!("{num}/reviewer-head"),
+        ];
+        let matches = refs
+            .iter()
+            .map(|r| Ref {
+                full_name: format!("refs/chetter/{r}"),
+                sha: "_".into(),
+            })
+            .collect();
+
+        mock.expect_matching_refs()
+            .times(1)
+            .with(eq(format!("{num}/")))
+            .return_once(|_| Ok(matches));
+        refs.iter().for_each(|r| {
+            mock.expect_delete_ref()
+                .times(1)
+                .with(eq(r.to_string()))
+                .return_once(|_| Ok(()));
+        });
+        let r = close_pr(mock, num).await;
+        assert!(r.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_synchronize_pr() {
+        let mut mock = MockRepositoryController::new();
+        let num = 1234;
+        let sha = "abc123";
+
+        mock.expect_matching_refs()
+            .times(1)
+            .with(eq(format!("{num}/")))
+            .returning(move |_| {
+                let refs = vec![
+                    format!("refs/chetter/{num}/head"),
+                    format!("refs/chetter/{num}/v4"),
+                    format!("refs/chetter/{num}/reviewer-v2"),
+                    format!("refs/chetter/{num}/nick-v99-head"),
+                    format!("refs/chetter/{num}/junk"),
+                ];
+
+                Ok(refs
+                    .iter()
+                    .map(|r| Ref {
+                        full_name: r.into(),
+                        sha: "_".into(),
+                    })
+                    .collect())
+            });
+        mock.expect_update_ref()
+            .times(1)
+            .with(eq(format!("{num}/head")), eq(sha))
+            .returning(|_, _| Ok(()));
+        mock.expect_create_ref()
+            .times(1)
+            .with(eq(format!("{num}/v5")), eq(sha))
+            .returning(|_, _| Ok(()));
+        let r = synchronize_pr(mock, num, sha).await;
+        assert!(r.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_synchronize_pr_no_head() {
+        let mut mock = MockRepositoryController::new();
+        let num = 1234;
+        let sha = "abc123";
+
+        mock.expect_matching_refs()
+            .times(1)
+            .with(eq(format!("{num}/")))
+            .returning(move |_| {
+                let refs = vec![
+                    format!("refs/chetter/{num}/v4"),
+                    format!("refs/chetter/{num}/reviewer-v2"),
+                    format!("refs/chetter/{num}/nick-v99-head"),
+                    format!("refs/chetter/{num}/junk"),
+                ];
+
+                Ok(refs
+                    .iter()
+                    .map(|r| Ref {
+                        full_name: r.into(),
+                        sha: "_".into(),
+                    })
+                    .collect())
+            });
+        mock.expect_create_ref()
+            .times(1)
+            .with(eq(format!("{num}/head")), eq(sha))
+            .returning(|_, _| Ok(()));
+        mock.expect_create_ref()
+            .times(1)
+            .with(eq(format!("{num}/v5")), eq(sha))
+            .returning(|_, _| Ok(()));
+        let r = synchronize_pr(mock, num, sha).await;
+        assert!(r.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_bookmark_pr() {
+        let mut mock = MockRepositoryController::new();
+        let num = 1234;
+        let sha = "abc123";
+        let user = "me";
+
+        mock.expect_matching_refs()
+            .times(1)
+            .with(eq(format!("{num}/{user}")))
+            .returning(move |_| {
+                let refs = vec![
+                    format!("refs/chetter/{num}/{user}-head"),
+                    format!("refs/chetter/{num}/{user}-v1"),
+                    format!("refs/chetter/{num}/{user}-v2"),
+                    format!("refs/chetter/{num}/{user}-v3"),
+                    format!("refs/chetter/{num}/{user}-v99-junk"),
+                ];
+
+                Ok(refs
+                    .iter()
+                    .map(|r| Ref {
+                        full_name: r.into(),
+                        sha: "_".into(),
+                    })
+                    .collect())
+            });
+        mock.expect_update_ref()
+            .times(1)
+            .with(eq(format!("{num}/{user}-head")), eq(sha))
+            .returning(|_, _| Ok(()));
+        mock.expect_create_ref()
+            .times(1)
+            .with(eq(format!("{num}/{user}-v4")), eq(sha))
+            .returning(|_, _| Ok(()));
+        let r = bookmark_pr(mock, num, user, sha).await;
+        assert!(r.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_bookmark_pr_no_head() {
+        let mut mock = MockRepositoryController::new();
+        let num = 1234;
+        let sha = "abc123";
+        let user = "me";
+
+        mock.expect_matching_refs()
+            .times(1)
+            .with(eq(format!("{num}/{user}")))
+            .returning(move |_| {
+                let refs = vec![
+                    format!("refs/chetter/{num}/{user}-v3"),
+                    format!("refs/chetter/{num}/{user}-v99-junk"),
+                ];
+
+                Ok(refs
+                    .iter()
+                    .map(|r| Ref {
+                        full_name: r.into(),
+                        sha: "_".into(),
+                    })
+                    .collect())
+            });
+        mock.expect_create_ref()
+            .times(1)
+            .with(eq(format!("{num}/{user}-head")), eq(sha))
+            .returning(|_, _| Ok(()));
+        mock.expect_create_ref()
+            .times(1)
+            .with(eq(format!("{num}/{user}-v4")), eq(sha))
+            .returning(|_, _| Ok(()));
+        let r = bookmark_pr(mock, num, user, sha).await;
+        assert!(r.is_ok());
+    }
+}
