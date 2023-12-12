@@ -95,7 +95,7 @@ async fn handle_pull_request(app_client: AppClient, ev: WebhookEvent) -> Result<
                     .instrument(sub_span)
                     .await
             }
-            PullRequestWebhookEventAction::Opened => {
+            PullRequestWebhookEventAction::Opened | PullRequestWebhookEventAction::Reopened => {
                 let sub_span = tracing::span!(tracing::Level::INFO, "open");
                 async move { open_pr(repo_client, pr.number, &pr.pull_request.head.sha).await }
                     .instrument(sub_span)
