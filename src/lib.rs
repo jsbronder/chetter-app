@@ -165,9 +165,12 @@ mod tests {
         let refs = vec![
             format!("{num}/v1"),
             format!("{num}/v2"),
+            format!("{num}/v2-base"),
             format!("{num}/head"),
+            format!("{num}/head-base"),
             format!("{num}/reviewer-v1"),
             format!("{num}/reviewer-v2"),
+            format!("{num}/reviewer-v2-base"),
             format!("{num}/reviewer-head"),
         ];
         let matches = refs
