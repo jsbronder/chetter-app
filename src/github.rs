@@ -16,18 +16,28 @@ use mockall::automock;
 
 use crate::error::ChetterError;
 
+/// Git reference
 #[derive(Debug, Clone)]
 pub struct Ref {
+    /// Symbolic reference name
     pub full_name: String,
+
+    /// Full SHA-1 object name
     pub sha: String,
 }
 
+/// GitHub Application Client.
+///
+/// A GitHub client authenticated as a 'Github App' as opposed to an 'OAuth 2' application.  This
+/// client is mostly useful for creating a `RepositoryClient`, which can get an installation access
+/// token and then take actions on GitHub repositories where it has been installed.
 #[derive(Debug, Clone)]
 pub struct AppClient {
     crab: Octocrab,
 }
 
 impl AppClient {
+    /// Create a new AppClient from a configuration file.
     pub fn new(config_path: String) -> Result<Self, ChetterError> {
         #[derive(Deserialize, Debug)]
         struct Config {
@@ -44,6 +54,7 @@ impl AppClient {
         Ok(Self { crab })
     }
 
+    /// Create a new RepositoryClient using the `.installation` data in a webhook event.
     pub async fn repo_client(self, ev: &WebhookEvent) -> Result<RepositoryClient, ChetterError> {
         let repo = ev
             .repository
@@ -82,6 +93,8 @@ impl AppClient {
     }
 }
 
+/// GitHub client authorized to act on behalf of a 'GitHub App' using the granted permissions on a
+/// specific repository.
 pub struct RepositoryClient {
     crab: Octocrab,
     org: String,
@@ -89,6 +102,7 @@ pub struct RepositoryClient {
 }
 
 impl RepositoryClient {
+    /// Get the full name for the target repository.
     pub fn full_name(&self) -> String {
         format!("{}/{}", self.org, self.repo)
     }
@@ -96,10 +110,57 @@ impl RepositoryClient {
 
 #[cfg_attr(test, automock)]
 #[async_trait]
+/// Types that can control symbolic git references in a repository.
+///
+/// The API ensures that all references are located under `refs/chetter/`.
+///
+/// # Examples
+///
+/// ```
+/// use async_trait::async_trait;
+/// use chetter_app::{
+///     error::ChetterError,
+///     github::{Ref, RepositoryController}
+/// };
+///
+/// struct NullClient;
+///
+/// #[async_trait]
+/// impl RepositoryController for NullClient {
+///     async fn create_ref(&self, ref_name: &str, sha: &str) -> Result<(), ChetterError> { Ok(()) }
+///     async fn update_ref(&self, ref_name: &str, sha: &str) -> Result<(), ChetterError> { Ok(()) }
+///     async fn delete_ref(&self, ref_name: &str) -> Result<(), ChetterError> { Ok(()) }
+///     async fn matching_refs(&self, search: &str) -> Result<Vec<Ref>, ChetterError> { Ok(vec![]) }
+/// }
+///
+/// async fn foo() {
+///     let client = NullClient;
+///
+///     // Update `refs/chetter/1234/existing-ref` to sha `abc1234`
+///     assert!(client.create_ref("1234/existing-ref", "abc1234").await.is_ok());
+/// }
+/// ```
+
 pub trait RepositoryController {
+    /// Create a new reference (rooted at *refs/chetter/*) to the specified sha.
     async fn create_ref(&self, ref_name: &str, sha: &str) -> Result<(), ChetterError>;
+
+    /// Update an existing reference (rooted at *refs/chetter/*) to the specified sha.
     async fn update_ref(&self, ref_name: &str, sha: &str) -> Result<(), ChetterError>;
+
+    /// Delete an existing reference (rooted at *refs/chetter/*).
     async fn delete_ref(&self, ref_name: &str) -> Result<(), ChetterError>;
+
+    /// Get a vector of references (rooted at *refs/chetter/*) that end with the specified search
+    /// string.
+    ///
+    /// For example `controller.matching_refs("abc/d")` will match:
+    ///     - refs/chetter/abc/def
+    ///     - refs/chetter/abc/d/ef
+    ///     - refs/chetter/abc/d
+    /// but will not match:
+    ///     - refs/chetter/other/abc/d
+    ///     - refs/chetter/ab
     async fn matching_refs(&self, search: &str) -> Result<Vec<Ref>, ChetterError>;
 }
 
