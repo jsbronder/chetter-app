@@ -20,6 +20,10 @@ review is tracked as `refs/chetter/<pull request>/<reviewer>-v<review number>`,
 and `refs/chetter/<pull request>/<reviewer>-head` points to the most recent
 review.
 
+Finally, all of the references mentioned in the two prior paragraphs also have
+an associated reference ending in `-base` which represents the base of the pull
+request at the time the versioned reference was made.
+
 When a pull request is closed or merged, Chetter will delete all associated
 references.
 
@@ -44,11 +48,9 @@ base, *origin/master*:
     git range-diff origin/master chetter/origin/10/v1 chetter/origin/10/v2
 
 Commits and changes since you last reviewed after the pull request branch was
-rebased on new changes to *origin/master* and force pushed.  (Note: future work
-to Chetter will also track the base for each reference).
+rebased on new changes to *origin/master* and force pushed:
 
-    
     git range-diff \
-            <old-base>..chetter/origin/10/<username>-head \
-            origin/master..chetter/origin/10/head
+            chetter/origin/10/<username>-base..chetter/origin/10/<username>-head \
+            chetter/origin/10/head-base..chetter/origin/10/head
    
