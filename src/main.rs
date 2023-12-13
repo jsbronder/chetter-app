@@ -90,10 +90,16 @@ async fn handle_pull_request(app_client: AppClient, ev: WebhookEvent) -> Result<
             PullRequestWebhookEventAction::Synchronize => {
                 let sub_span = tracing::span!(tracing::Level::INFO, "synchronize");
                 async move {
-                        synchronize_pr(repo_client, pr.number, &pr.pull_request.head.sha).await
-                    }
-                    .instrument(sub_span)
+                    synchronize_pr(
+                        repo_client,
+                        pr.number,
+                        &pr.pull_request.head.sha,
+                        &pr.pull_request.base.sha,
+                    )
                     .await
+                }
+                .instrument(sub_span)
+                .await
             }
             PullRequestWebhookEventAction::Opened | PullRequestWebhookEventAction::Reopened => {
                 let sub_span = tracing::span!(tracing::Level::INFO, "open");

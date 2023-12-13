@@ -1,3 +1,4 @@
+use error::ChetterError;
 use github::RepositoryController;
 
 pub mod error;
@@ -56,35 +57,43 @@ pub async fn synchronize_pr(
     client: impl RepositoryController,
     pr: u64,
     sha: &str,
+    base: &str,
 ) -> Result<(), ()> {
     let Ok(refs) = client.matching_refs(&format!("{}/", pr)).await else {
         return Err(());
     };
+    let mut results: Vec<Result<(), ChetterError>> = vec![];
 
-    if refs.iter().any(|t| t.full_name.ends_with("/head")) {
-        let ref_name = format!("{}/head", pr);
-        let _ = client.update_ref(&ref_name, sha).await;
-    } else {
-        let ref_name = format!("{}/head", pr);
-        let _ = client.create_ref(&ref_name, sha).await;
+    for (name, target) in [("head", sha), ("head-base", base)] {
+        let name = format!("{pr}/{name}");
+        if refs.iter().any(|t| t.full_name.ends_with(&name)) {
+            results.push(client.update_ref(&name, target).await);
+        } else {
+            results.push(client.create_ref(&name, target).await);
+        }
     }
 
     let next_ref = if refs.is_empty() {
-        format!("{}/v1", pr)
+        1
     } else {
         let last_version: u32 = refs
             .iter()
             .filter_map(|t| t.full_name.split('v').last()?.parse::<u32>().ok())
             .max()
             .unwrap_or(0);
-        format!("{}/v{}", pr, last_version + 1)
+        last_version + 1
     };
 
-    if client.create_ref(&next_ref, sha).await.is_err() {
-        return Err(());
+    for (suffix, target) in [("", sha), ("-base", base)] {
+        let name = format!("{pr}/v{next_ref}{suffix}");
+        results.push(client.create_ref(&name, target).await);
     }
 
-    Ok(())
+    if results.iter().any(|r| r.is_err()) {
+        Err(())
+    } else {
+        Ok(())
+    }
 }
 
 pub async fn bookmark_pr(
@@ -200,6 +209,7 @@ mod tests {
         let mut mock = MockRepositoryController::new();
         let num = 1234;
         let sha = "abc123";
+        let base = "ba5e";
 
         mock.expect_matching_refs()
             .times(1)
@@ -207,7 +217,9 @@ mod tests {
             .returning(move |_| {
                 let refs = vec![
                     format!("refs/chetter/{num}/head"),
+                    format!("refs/chetter/{num}/head-base"),
                     format!("refs/chetter/{num}/v4"),
+                    format!("refs/chetter/{num}/v4-base"),
                     format!("refs/chetter/{num}/reviewer-v2"),
                     format!("refs/chetter/{num}/nick-v99-head"),
                     format!("refs/chetter/{num}/junk"),
@@ -225,11 +237,19 @@ mod tests {
             .times(1)
             .with(eq(format!("{num}/head")), eq(sha))
             .returning(|_, _| Ok(()));
+        mock.expect_update_ref()
+            .times(1)
+            .with(eq(format!("{num}/head-base")), eq(base))
+            .returning(|_, _| Ok(()));
         mock.expect_create_ref()
             .times(1)
             .with(eq(format!("{num}/v5")), eq(sha))
             .returning(|_, _| Ok(()));
-        let r = synchronize_pr(mock, num, sha).await;
+        mock.expect_create_ref()
+            .times(1)
+            .with(eq(format!("{num}/v5-base")), eq(base))
+            .returning(|_, _| Ok(()));
+        let r = synchronize_pr(mock, num, sha, base).await;
         assert!(r.is_ok());
     }
 
@@ -238,6 +258,7 @@ mod tests {
         let mut mock = MockRepositoryController::new();
         let num = 1234;
         let sha = "abc123";
+        let base = "ba5e";
 
         mock.expect_matching_refs()
             .times(1)
@@ -245,6 +266,7 @@ mod tests {
             .returning(move |_| {
                 let refs = vec![
                     format!("refs/chetter/{num}/v4"),
+                    format!("refs/chetter/{num}/v4-base"),
                     format!("refs/chetter/{num}/reviewer-v2"),
                     format!("refs/chetter/{num}/nick-v99-head"),
                     format!("refs/chetter/{num}/junk"),
@@ -264,9 +286,17 @@ mod tests {
             .returning(|_, _| Ok(()));
         mock.expect_create_ref()
             .times(1)
+            .with(eq(format!("{num}/head-base")), eq(base))
+            .returning(|_, _| Ok(()));
+        mock.expect_create_ref()
+            .times(1)
             .with(eq(format!("{num}/v5")), eq(sha))
             .returning(|_, _| Ok(()));
-        let r = synchronize_pr(mock, num, sha).await;
+        mock.expect_create_ref()
+            .times(1)
+            .with(eq(format!("{num}/v5-base")), eq(base))
+            .returning(|_, _| Ok(()));
+        let r = synchronize_pr(mock, num, sha, base).await;
         assert!(r.is_ok());
     }
 
