@@ -3,17 +3,25 @@ use github::RepositoryController;
 pub mod error;
 pub mod github;
 
-pub async fn open_pr(client: impl RepositoryController, pr: u64, sha: &str) -> Result<(), ()> {
+pub async fn open_pr(
+    client: impl RepositoryController,
+    pr: u64,
+    sha: &str,
+    base: &str,
+) -> Result<(), ()> {
     let mut failed = false;
-    for ref_name in &["head", "v1"] {
-        if client
-            .create_ref(&format!("{}/{}", pr, ref_name), sha)
-            .await
-            .is_err()
-        {
-            failed = true;
+    for ref_name in ["head", "v1"] {
+        for (suffix, target) in [("", sha), ("-base", base)] {
+            if client
+                .create_ref(&format!("{}/{}{}", pr, ref_name, suffix), target)
+                .await
+                .is_err()
+            {
+                failed = true;
+            }
         }
     }
+
     if failed {
         return Err(());
     }
@@ -126,6 +134,7 @@ mod tests {
     async fn test_open_pr() {
         let mut mock = MockRepositoryController::new();
         let sha = "abcd";
+        let base = "deaf";
         let num = 1234;
 
         mock.expect_create_ref()
@@ -136,7 +145,16 @@ mod tests {
             .times(1)
             .with(eq(format!("{num}/head")), eq(sha))
             .returning(|_, _| Ok(()));
-        let r = open_pr(mock, num, sha).await;
+        mock.expect_create_ref()
+            .times(1)
+            .with(eq(format!("{num}/v1-base")), eq(base))
+            .returning(|_, _| Ok(()));
+        mock.expect_create_ref()
+            .times(1)
+            .with(eq(format!("{num}/head-base")), eq(base))
+            .returning(|_, _| Ok(()));
+
+        let r = open_pr(mock, num, sha, base).await;
         assert!(r.is_ok())
     }
 
