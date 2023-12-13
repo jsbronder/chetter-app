@@ -101,35 +101,43 @@ pub async fn bookmark_pr(
     pr: u64,
     reviewer: &str,
     sha: &str,
+    base: &str,
 ) -> Result<(), ()> {
     let Ok(refs) = client.matching_refs(&format!("{}/{}", pr, reviewer)).await else {
         return Err(());
     };
+    let mut results: Vec<Result<(), ChetterError>> = vec![];
 
-    if refs.iter().any(|t| t.full_name.ends_with("-head")) {
-        let ref_name = format!("{}/{}-head", pr, reviewer);
-        let _ = client.update_ref(&ref_name, sha).await;
-    } else {
-        let ref_name = format!("{}/{}-head", pr, reviewer);
-        let _ = client.create_ref(&ref_name, sha).await;
+    for (suffix, target) in [("head", sha), ("head-base", base)] {
+        let name = format!("{pr}/{reviewer}-{suffix}");
+        if refs.iter().any(|t| t.full_name.ends_with(&suffix)) {
+            results.push(client.update_ref(&name, target).await);
+        } else {
+            results.push(client.create_ref(&name, target).await);
+        }
     }
 
     let next_ref = if refs.is_empty() {
-        format!("{}/{}-v1", pr, reviewer)
+        1
     } else {
         let last_version: u32 = refs
             .iter()
             .filter_map(|t| t.full_name.split('v').last()?.parse::<u32>().ok())
             .max()
             .unwrap_or(0);
-        format!("{}/{}-v{}", pr, reviewer, last_version + 1)
+        last_version + 1
     };
 
-    if client.create_ref(&next_ref, sha).await.is_err() {
-        return Err(());
+    for (suffix, target) in [("", sha), ("-base", base)] {
+        let name = format!("{pr}/{reviewer}-v{next_ref}{suffix}");
+        results.push(client.create_ref(&name, target).await);
     }
 
-    Ok(())
+    if results.iter().any(|r| r.is_err()) {
+        Err(())
+    } else {
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -305,6 +313,7 @@ mod tests {
         let mut mock = MockRepositoryController::new();
         let num = 1234;
         let sha = "abc123";
+        let base = "ba54";
         let user = "me";
 
         mock.expect_matching_refs()
@@ -313,9 +322,11 @@ mod tests {
             .returning(move |_| {
                 let refs = vec![
                     format!("refs/chetter/{num}/{user}-head"),
-                    format!("refs/chetter/{num}/{user}-v1"),
+                    format!("refs/chetter/{num}/{user}-head-base"),
                     format!("refs/chetter/{num}/{user}-v2"),
+                    format!("refs/chetter/{num}/{user}-v2-base"),
                     format!("refs/chetter/{num}/{user}-v3"),
+                    format!("refs/chetter/{num}/{user}-v3-base"),
                     format!("refs/chetter/{num}/{user}-v99-junk"),
                 ];
 
@@ -331,11 +342,19 @@ mod tests {
             .times(1)
             .with(eq(format!("{num}/{user}-head")), eq(sha))
             .returning(|_, _| Ok(()));
+        mock.expect_update_ref()
+            .times(1)
+            .with(eq(format!("{num}/{user}-head-base")), eq(base))
+            .returning(|_, _| Ok(()));
         mock.expect_create_ref()
             .times(1)
             .with(eq(format!("{num}/{user}-v4")), eq(sha))
             .returning(|_, _| Ok(()));
-        let r = bookmark_pr(mock, num, user, sha).await;
+        mock.expect_create_ref()
+            .times(1)
+            .with(eq(format!("{num}/{user}-v4-base")), eq(base))
+            .returning(|_, _| Ok(()));
+        let r = bookmark_pr(mock, num, user, sha, base).await;
         assert!(r.is_ok());
     }
 
@@ -344,6 +363,7 @@ mod tests {
         let mut mock = MockRepositoryController::new();
         let num = 1234;
         let sha = "abc123";
+        let base = "ba5e";
         let user = "me";
 
         mock.expect_matching_refs()
@@ -352,6 +372,7 @@ mod tests {
             .returning(move |_| {
                 let refs = vec![
                     format!("refs/chetter/{num}/{user}-v3"),
+                    format!("refs/chetter/{num}/{user}-v3-base"),
                     format!("refs/chetter/{num}/{user}-v99-junk"),
                 ];
 
@@ -369,9 +390,17 @@ mod tests {
             .returning(|_, _| Ok(()));
         mock.expect_create_ref()
             .times(1)
+            .with(eq(format!("{num}/{user}-head-base")), eq(base))
+            .returning(|_, _| Ok(()));
+        mock.expect_create_ref()
+            .times(1)
             .with(eq(format!("{num}/{user}-v4")), eq(sha))
             .returning(|_, _| Ok(()));
-        let r = bookmark_pr(mock, num, user, sha).await;
+        mock.expect_create_ref()
+            .times(1)
+            .with(eq(format!("{num}/{user}-v4-base")), eq(base))
+            .returning(|_, _| Ok(()));
+        let r = bookmark_pr(mock, num, user, sha, base).await;
         assert!(r.is_ok());
     }
 }

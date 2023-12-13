@@ -53,6 +53,7 @@ async fn handle_pull_request_review(app_client: AppClient, ev: WebhookEvent) -> 
                     payload.pull_request.number,
                     &reviewer.login,
                     sha,
+                    &payload.pull_request.base.sha,
                 )
                 .await
             }
