@@ -1,7 +1,7 @@
 Chetter monitors pull request events sent from Github and adds some quality of
 live improvements intended to assist code review.
 
-### Chetter References
+# Chetter References
 A conscientiousness author might explicitly publish any changes they push to a
 pull request branch that is still under review.  Likewise, a diligent reviewer
 might create local branch/tag pointing to the tip of the branch they reviewed
@@ -27,7 +27,7 @@ request at the time the versioned reference was made.
 When a pull request is closed or merged, Chetter will delete all associated
 references.
 
-#### Pulling Chetter References
+## Pulling Chetter References
 Enable automatic fetching of Chetter references:
 
     git config --add remote.origin.fetch '+refs/chetter/*:refs/chetter/origin/*'
@@ -37,7 +37,7 @@ when the pull request is closed.
 
     git config --add remote.origin.prune true
 
-#### Using Chetter References
+## Using Chetter References
 What changed since you last reviewed pull request 10:
 
     git diff chetter/origin/10/<username>-head..chetter/origin/10/head
@@ -53,4 +53,41 @@ rebased on new changes to *origin/master* and force pushed:
     git range-diff \
             chetter/origin/10/<username>-base..chetter/origin/10/<username>-head \
             chetter/origin/10/head-base..chetter/origin/10/head
-   
+
+# Running Chetter
+- [Register a GitHub App](
+    https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/registering-a-github-app)
+    - Select the *Contents (read/write)* and *Pull Request (read-only)* Repository Permissions
+    - Enable the *Pull Request* and *Pull Request Review* event subscriptions
+    - Set the Webhook URL to point to where chetter-app will be running
+    - Note the application id
+    - Generate a private key
+
+- Create a `chetter-app.toml` configuration
+
+    ```
+    app_id = <application_id>
+    private_key = """
+    -----BEGIN RSA PRIVATE KEY-----
+    ABCDE...
+    -----END RSA PRIVATE KEY-----
+    """
+    ```
+
+- Build the chetter-app container image
+
+    ```
+    make -C docker VERSION=latest chetter-app
+    ```
+
+- Create a container
+    - Expose port 3333/tcp
+    - Add the directory containing `config.toml` as a volume mounted at `/config`
+
+    ```
+    podman run --rm \
+        --name chetter-app
+        --publish 0.0.0.0:3333:3333/tcp \
+        --volume /dir/containing/config:/config \
+        chetter-app:latest
+    ```
