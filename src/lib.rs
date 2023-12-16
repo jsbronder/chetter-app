@@ -98,18 +98,21 @@ pub async fn bookmark_pr(
     reviewer: &str,
     sha: &str,
     base: &str,
-) -> Result<(), ()> {
-    let Ok(refs) = client.matching_refs(&format!("{}/{}", pr, reviewer)).await else {
-        return Err(());
-    };
-    let mut results: Vec<Result<(), ChetterError>> = vec![];
+) -> Result<(), ChetterError> {
+    let refs = client
+        .matching_refs(&format!("{}/{}", pr, reviewer))
+        .await?;
+
+    let mut errors: Vec<ChetterError> = vec![];
 
     for (suffix, target) in [("head", sha), ("head-base", base)] {
         let name = format!("{pr}/{reviewer}-{suffix}");
         if refs.iter().any(|t| t.full_name.ends_with(&suffix)) {
-            results.push(client.update_ref(&name, target).await);
-        } else {
-            results.push(client.create_ref(&name, target).await);
+            if let Err(e) = client.update_ref(&name, target).await {
+                errors.push(e);
+            }
+        } else if let Err(e) = client.create_ref(&name, target).await {
+            errors.push(e);
         }
     }
 
@@ -126,13 +129,14 @@ pub async fn bookmark_pr(
 
     for (suffix, target) in [("", sha), ("-base", base)] {
         let name = format!("{pr}/{reviewer}-v{next_ref}{suffix}");
-        results.push(client.create_ref(&name, target).await);
+        if let Err(e) = client.create_ref(&name, target).await {
+            errors.push(e);
+        }
     }
 
-    if results.iter().any(|r| r.is_err()) {
-        Err(())
-    } else {
-        Ok(())
+    match errors.pop() {
+        None => Ok(()),
+        Some(e) => Err(e),
     }
 }
 
