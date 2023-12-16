@@ -1,21 +1,17 @@
-use axum::{
-    http::{header::HeaderMap, StatusCode},
-    response::IntoResponse,
-    routing::post,
-};
+use axum::{http::header::HeaderMap, routing::post};
 use getopts::Options;
 use octocrab::models::webhook_events::WebhookEvent;
 use tokio::signal;
 use tracing::{debug, error};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use chetter_app::{github::AppClient, webhook_dispatcher};
+use chetter_app::{error::ChetterError, github::AppClient, webhook_dispatcher};
 
 async fn post_github_events(
     axum::extract::State(app_client): axum::extract::State<AppClient>,
     headers: HeaderMap,
     body: String,
-) -> impl IntoResponse {
+) -> Result<(), ChetterError> {
     let event_type = match headers.get("X-Github-Event") {
         Some(v) => match v.to_str() {
             Ok(v) => v,
@@ -24,10 +20,9 @@ async fn post_github_events(
                 headers.iter().for_each(|(k, v)| {
                     debug!("{} = {}", k, v.to_str().unwrap_or("<error>"));
                 });
-                return (
-                    StatusCode::BAD_REQUEST,
-                    format!("Failed to parse X-Github-Event: {}", error),
-                );
+                return Err(ChetterError::GithubParseError(format!(
+                    "Failed to parse X-Github-Event: {error}"
+                )));
             }
         },
         None => {
@@ -36,7 +31,7 @@ async fn post_github_events(
             headers.iter().for_each(|(k, v)| {
                 debug!("{} = {}", k, v.to_str().unwrap_or("<error>"));
             });
-            return (StatusCode::BAD_REQUEST, msg.into());
+            return Err(ChetterError::GithubParseError(msg.into()));
         }
     };
 
@@ -46,15 +41,11 @@ async fn post_github_events(
             let msg = format!("Failed to parse event: {}", error);
             error!(msg);
             debug!("{}", body);
-            return (StatusCode::BAD_REQUEST, msg);
+            return Err(ChetterError::GithubParseError(msg));
         }
     };
 
-    if webhook_dispatcher(app_client, event).await.is_ok() {
-        (StatusCode::OK, "".to_string())
-    } else {
-        (StatusCode::INTERNAL_SERVER_ERROR, "".to_string())
-    }
+    webhook_dispatcher(app_client, event).await
 }
 
 async fn shutdown_signal() {
