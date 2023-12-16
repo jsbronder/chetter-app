@@ -1,3 +1,8 @@
+use axum::{
+    http::StatusCode,
+    response::{IntoResponse, Response},
+};
+
 #[derive(Debug)]
 pub enum ChetterError {
     GithubParseError(String),
@@ -42,6 +47,12 @@ impl std::fmt::Display for ChetterError {
             ChetterError::Octocrab(e) => write!(f, "{}", e),
             ChetterError::TOMLParseError(e) => write!(f, "{}", e),
         }
+    }
+}
+
+impl IntoResponse for ChetterError {
+    fn into_response(self) -> Response {
+        (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()).into_response()
     }
 }
 
