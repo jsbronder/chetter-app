@@ -9,25 +9,24 @@ pub async fn open_pr(
     pr: u64,
     sha: &str,
     base: &str,
-) -> Result<(), ()> {
-    let mut failed = false;
+) -> Result<(), ChetterError> {
+    let mut errors: Vec<ChetterError> = vec![];
+
     for ref_name in ["head", "v1"] {
         for (suffix, target) in [("", sha), ("-base", base)] {
-            if client
+            if let Err(e) = client
                 .create_ref(&format!("{}/{}{}", pr, ref_name, suffix), target)
                 .await
-                .is_err()
             {
-                failed = true;
+                errors.push(e);
             }
         }
     }
 
-    if failed {
-        return Err(());
+    match errors.pop() {
+        None => Ok(()),
+        Some(e) => Err(e),
     }
-
-    Ok(())
 }
 
 pub async fn close_pr(client: impl RepositoryController, pr: u64) -> Result<(), ()> {
