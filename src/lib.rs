@@ -53,18 +53,18 @@ pub async fn synchronize_pr(
     pr: u64,
     sha: &str,
     base: &str,
-) -> Result<(), ()> {
-    let Ok(refs) = client.matching_refs(&format!("{}/", pr)).await else {
-        return Err(());
-    };
-    let mut results: Vec<Result<(), ChetterError>> = vec![];
+) -> Result<(), ChetterError> {
+    let refs = client.matching_refs(&format!("{}/", pr)).await?;
+    let mut errors: Vec<ChetterError> = vec![];
 
     for (name, target) in [("head", sha), ("head-base", base)] {
         let name = format!("{pr}/{name}");
         if refs.iter().any(|t| t.full_name.ends_with(&name)) {
-            results.push(client.update_ref(&name, target).await);
-        } else {
-            results.push(client.create_ref(&name, target).await);
+            if let Err(e) = client.update_ref(&name, target).await {
+                errors.push(e);
+            }
+        } else if let Err(e) = client.create_ref(&name, target).await {
+            errors.push(e);
         }
     }
 
@@ -81,13 +81,14 @@ pub async fn synchronize_pr(
 
     for (suffix, target) in [("", sha), ("-base", base)] {
         let name = format!("{pr}/v{next_ref}{suffix}");
-        results.push(client.create_ref(&name, target).await);
+        if let Err(e) = client.create_ref(&name, target).await {
+            errors.push(e);
+        }
     }
 
-    if results.iter().any(|r| r.is_err()) {
-        Err(())
-    } else {
-        Ok(())
+    match errors.pop() {
+        None => Ok(()),
+        Some(e) => Err(e),
     }
 }
 
