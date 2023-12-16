@@ -29,27 +29,23 @@ pub async fn open_pr(
     }
 }
 
-pub async fn close_pr(client: impl RepositoryController, pr: u64) -> Result<(), ()> {
-    let Ok(refs) = client.matching_refs(&format!("{}/", pr)).await else {
-        return Err(());
-    };
+pub async fn close_pr(client: impl RepositoryController, pr: u64) -> Result<(), ChetterError> {
+    let refs = client.matching_refs(&format!("{}/", pr)).await?;
 
-    let mut failed = false;
+    let mut errors: Vec<ChetterError> = vec![];
     for ref_obj in refs.iter() {
-        if client
+        if let Err(e) = client
             .delete_ref(&ref_obj.full_name.replace("refs/chetter/", ""))
             .await
-            .is_err()
         {
-            failed = true;
+            errors.push(e);
         }
     }
 
-    if failed {
-        return Err(());
+    match errors.pop() {
+        None => Ok(()),
+        Some(e) => Err(e),
     }
-
-    Ok(())
 }
 
 pub async fn synchronize_pr(

@@ -122,6 +122,7 @@ async fn handle_pull_request(app_client: AppClient, ev: WebhookEvent) -> Result<
                 async move { close_pr(repo_client, pr.number).await }
                     .instrument(sub_span)
                     .await
+                    .map_err(|_| ())
             }
 
             _ => {
