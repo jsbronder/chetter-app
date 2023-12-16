@@ -4,144 +4,12 @@ use axum::{
     routing::post,
 };
 use getopts::Options;
-use octocrab::models::{
-    pulls::ReviewState,
-    webhook_events::{
-        payload::{PullRequestWebhookEventAction, WebhookEventPayload},
-        WebhookEvent, WebhookEventType,
-    },
-};
+use octocrab::models::webhook_events::WebhookEvent;
 use tokio::signal;
-use tracing::{debug, error, Instrument};
+use tracing::{debug, error};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use chetter_app::{bookmark_pr, close_pr, github::AppClient, open_pr, synchronize_pr};
-
-async fn handle_pull_request_review(app_client: AppClient, ev: WebhookEvent) -> Result<(), ()> {
-    let Ok(repo_client) = app_client.repo_client(&ev).await else {
-        return Err(());
-    };
-
-    let WebhookEventPayload::PullRequestReview(ref payload) = ev.specific else {
-        error!("Unexpected payload: {:?}", &ev.specific);
-        return Err(());
-    };
-
-    let Some(reviewer) = payload.review.user.as_ref() else {
-        error!("Missing .review.user");
-        return Err(());
-    };
-
-    let span = tracing::span!(
-        tracing::Level::WARN,
-        "review",
-        repo = repo_client.full_name(),
-        pr = payload.pull_request.number,
-        reviewer = reviewer.login
-    );
-
-    async move {
-        let Some(ref sha) = payload.review.commit_id else {
-            error!("missing .review.commit_id");
-            return Err(());
-        };
-
-        let ret = match payload.review.state {
-            Some(ReviewState::Approved | ReviewState::ChangesRequested) => {
-                bookmark_pr(
-                    repo_client,
-                    payload.pull_request.number,
-                    &reviewer.login,
-                    sha,
-                    &payload.pull_request.base.sha,
-                )
-                .await
-            }
-            _ => Ok(()),
-        };
-
-        if ret.is_ok() {
-            Ok(())
-        } else {
-            Err(())
-        }
-    }
-    .instrument(span)
-    .await
-}
-
-async fn handle_pull_request(app_client: AppClient, ev: WebhookEvent) -> Result<(), ()> {
-    let Ok(repo_client) = app_client.repo_client(&ev).await else {
-        return Err(());
-    };
-
-    let WebhookEventPayload::PullRequest(ref pr) = ev.specific else {
-        error!("Unexpected payload: {:?}", &ev.specific);
-        return Err(());
-    };
-
-    let span = tracing::span!(
-        tracing::Level::WARN,
-        "pr",
-        repo = repo_client.full_name(),
-        pr = pr.number
-    );
-    async move {
-        let ret = match pr.action {
-            PullRequestWebhookEventAction::Synchronize => {
-                let sub_span = tracing::span!(tracing::Level::INFO, "synchronize");
-                async move {
-                    synchronize_pr(
-                        repo_client,
-                        pr.number,
-                        &pr.pull_request.head.sha,
-                        &pr.pull_request.base.sha,
-                    )
-                    .await
-                }
-                .instrument(sub_span)
-                .await
-                .map_err(|_| ())
-            }
-            PullRequestWebhookEventAction::Opened | PullRequestWebhookEventAction::Reopened => {
-                let sub_span = tracing::span!(tracing::Level::INFO, "open");
-                async move {
-                    open_pr(
-                        repo_client,
-                        pr.number,
-                        &pr.pull_request.head.sha,
-                        &pr.pull_request.base.sha,
-                    )
-                    .await
-                }
-                .instrument(sub_span)
-                .await
-                .map_err(|_| ())
-            }
-            PullRequestWebhookEventAction::Closed => {
-                let sub_span = tracing::span!(tracing::Level::INFO, "close");
-                async move { close_pr(repo_client, pr.number).await }
-                    .instrument(sub_span)
-                    .await
-                    .map_err(|_| ())
-            }
-
-            _ => {
-                debug!("Ignoring PR action: {:?}", pr.action);
-                Ok(())
-            }
-        };
-
-        if ret.is_ok() {
-            Ok(())
-        } else {
-            error!("failed to handle {:?}", pr.action);
-            Err(())
-        }
-    }
-    .instrument(span)
-    .await
-}
+use chetter_app::{github::AppClient, webhook_dispatcher};
 
 async fn post_github_events(
     axum::extract::State(app_client): axum::extract::State<AppClient>,
@@ -182,15 +50,7 @@ async fn post_github_events(
         }
     };
 
-    let ret = match event.kind {
-        WebhookEventType::PullRequest => handle_pull_request(app_client, event).await.is_ok(),
-        WebhookEventType::PullRequestReview => {
-            handle_pull_request_review(app_client, event).await.is_ok()
-        }
-        _ => true,
-    };
-
-    if ret {
+    if webhook_dispatcher(app_client, event).await.is_ok() {
         (StatusCode::OK, "".to_string())
     } else {
         (StatusCode::INTERNAL_SERVER_ERROR, "".to_string())

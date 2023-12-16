@@ -1,10 +1,144 @@
 use error::ChetterError;
-use github::RepositoryController;
+use github::{AppClient, RepositoryClient, RepositoryController};
+use octocrab::models::{
+    pulls::ReviewState,
+    webhook_events::{
+        payload::{
+            PullRequestReviewWebhookEventPayload, PullRequestWebhookEventAction,
+            PullRequestWebhookEventPayload, WebhookEventPayload,
+        },
+        WebhookEvent,
+    },
+};
+use tracing::{debug, error, Instrument};
 
 pub mod error;
 pub mod github;
 
-pub async fn open_pr(
+/// Dispatch GitHub Webhook Events
+///
+/// Handles PullRequest and PullRequestReview events, ignores all others.
+pub async fn webhook_dispatcher(
+    app_client: AppClient,
+    event: WebhookEvent,
+) -> Result<(), ChetterError> {
+    // Early exit to avoid making a repo client when not necessary
+    match event.specific {
+        WebhookEventPayload::PullRequest(_) | WebhookEventPayload::PullRequestReview(_) => (),
+        _ => return Ok(()),
+    }
+
+    let repo_client = app_client.repo_client(&event).await?;
+    match event.specific {
+        WebhookEventPayload::PullRequest(payload) => {
+            let span = tracing::span!(
+                tracing::Level::WARN,
+                "pr",
+                repo = repo_client.full_name(),
+                pr = payload.number
+            );
+            async move { on_pull_request(repo_client, payload).await }
+                .instrument(span)
+                .await?;
+        }
+        WebhookEventPayload::PullRequestReview(payload) => {
+            let Some(reviewer) = payload.review.user.as_ref() else {
+                let msg = "Missing .review.user";
+                error!(msg);
+                return Err(ChetterError::GithubParseError(msg.into()));
+            };
+            let login = reviewer.login.clone();
+
+            let span = tracing::span!(
+                tracing::Level::WARN,
+                "review",
+                repo = repo_client.full_name(),
+                pr = payload.pull_request.number,
+                reviewer = login,
+            );
+            async move { on_pull_request_review(repo_client, &login, payload).await }
+                .instrument(span)
+                .await?;
+        }
+        _ => (),
+    }
+    Ok(())
+}
+
+async fn on_pull_request(
+    repo_client: RepositoryClient,
+    payload: Box<PullRequestWebhookEventPayload>,
+) -> Result<(), ChetterError> {
+    match payload.action {
+        PullRequestWebhookEventAction::Synchronize => {
+            let sub_span = tracing::span!(tracing::Level::INFO, "synchronize");
+            async move {
+                synchronize_pr(
+                    repo_client,
+                    payload.number,
+                    &payload.pull_request.head.sha,
+                    &payload.pull_request.base.sha,
+                )
+                .await
+            }
+            .instrument(sub_span)
+            .await
+        }
+        PullRequestWebhookEventAction::Opened | PullRequestWebhookEventAction::Reopened => {
+            let sub_span = tracing::span!(tracing::Level::INFO, "open");
+            async move {
+                open_pr(
+                    repo_client,
+                    payload.number,
+                    &payload.pull_request.head.sha,
+                    &payload.pull_request.base.sha,
+                )
+                .await
+            }
+            .instrument(sub_span)
+            .await
+        }
+        PullRequestWebhookEventAction::Closed => {
+            let sub_span = tracing::span!(tracing::Level::INFO, "close");
+            async move { close_pr(repo_client, payload.number).await }
+                .instrument(sub_span)
+                .await
+        }
+
+        _ => {
+            debug!("Ignoring PR action: {:?}", payload.action);
+            Ok(())
+        }
+    }
+}
+
+async fn on_pull_request_review(
+    repo_client: RepositoryClient,
+    reviewer: &str,
+    payload: Box<PullRequestReviewWebhookEventPayload>,
+) -> Result<(), ChetterError> {
+    let Some(ref sha) = payload.review.commit_id else {
+        let msg = "missing .review.commit_id";
+        error!(msg);
+        return Err(ChetterError::GithubParseError(msg.into()));
+    };
+
+    match payload.review.state {
+        Some(ReviewState::Approved | ReviewState::ChangesRequested) => {
+            bookmark_pr(
+                repo_client,
+                payload.pull_request.number,
+                reviewer,
+                sha,
+                &payload.pull_request.base.sha,
+            )
+            .await
+        }
+        _ => Ok(()),
+    }
+}
+
+async fn open_pr(
     client: impl RepositoryController,
     pr: u64,
     sha: &str,
@@ -29,7 +163,7 @@ pub async fn open_pr(
     }
 }
 
-pub async fn close_pr(client: impl RepositoryController, pr: u64) -> Result<(), ChetterError> {
+async fn close_pr(client: impl RepositoryController, pr: u64) -> Result<(), ChetterError> {
     let refs = client.matching_refs(&format!("{}/", pr)).await?;
 
     let mut errors: Vec<ChetterError> = vec![];
@@ -48,7 +182,7 @@ pub async fn close_pr(client: impl RepositoryController, pr: u64) -> Result<(), 
     }
 }
 
-pub async fn synchronize_pr(
+async fn synchronize_pr(
     client: impl RepositoryController,
     pr: u64,
     sha: &str,
@@ -92,7 +226,7 @@ pub async fn synchronize_pr(
     }
 }
 
-pub async fn bookmark_pr(
+async fn bookmark_pr(
     client: impl RepositoryController,
     pr: u64,
     reviewer: &str,
