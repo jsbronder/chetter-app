@@ -229,7 +229,7 @@ impl RepositoryController for RepositoryClient {
     }
 
     async fn matching_refs(&self, search: &str) -> Result<Vec<Ref>, ChetterError> {
-        match self
+        let page = self
             .crab
             .get(
                 format!(
@@ -238,30 +238,28 @@ impl RepositoryController for RepositoryClient {
                 ),
                 None::<&()>,
             )
-            .await
-        {
-            Ok::<Vec<octocrab::models::repos::Ref>, _>(v) => Ok(v
-                .iter()
-                .filter_map(|r| {
-                    let sha = match &r.object {
-                        octocrab::models::repos::Object::Commit { sha, .. } => sha,
-                        octocrab::models::repos::Object::Tag { sha, .. } => sha,
-                        _ => {
-                            warn!("Skipping unmatched: {:?}", r);
-                            return None;
-                        }
-                    };
+            .await?;
+        let results = self
+            .crab
+            .all_pages::<octocrab::models::repos::Ref>(page)
+            .await?;
+        Ok(results
+            .iter()
+            .filter_map(|r| {
+                let sha = match &r.object {
+                    octocrab::models::repos::Object::Commit { sha, .. } => sha,
+                    octocrab::models::repos::Object::Tag { sha, .. } => sha,
+                    _ => {
+                        warn!("Skipping unmatched: {:?}", r);
+                        return None;
+                    }
+                };
 
-                    Some(Ref {
-                        full_name: r.ref_field.clone(),
-                        sha: sha.clone(),
-                    })
+                Some(Ref {
+                    full_name: r.ref_field.clone(),
+                    sha: sha.clone(),
                 })
-                .collect()),
-            Err(error) => {
-                error!("failed to match chetter/{}: {}", search, error);
-                Err(ChetterError::Octocrab(error))
-            }
-        }
+            })
+            .collect())
     }
 }
