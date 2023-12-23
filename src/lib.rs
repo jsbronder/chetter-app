@@ -10,6 +10,7 @@ use octocrab::models::{
         WebhookEvent,
     },
 };
+use std::marker::{Send, Sync};
 use tracing::{debug, error, Instrument};
 
 pub mod error;
@@ -163,16 +164,31 @@ async fn open_pr(
     }
 }
 
-async fn close_pr(client: impl RepositoryController, pr: u64) -> Result<(), ChetterError> {
-    let refs = client.matching_refs(&format!("{}/", pr)).await?;
+async fn close_pr<T: RepositoryController + Sync + Send + 'static>(
+    client: T,
+    pr: u64,
+) -> Result<(), ChetterError> {
+    let refs: Vec<String> = client
+        .matching_refs(&format!("{}/", pr))
+        .await?
+        .iter()
+        .map(|ref_obj| ref_obj.full_name.replace("refs/chetter/", ""))
+        .collect();
+
+    let client = std::sync::Arc::new(client);
+
+    let mut set = tokio::task::JoinSet::new();
+    for ref_name in refs {
+        let client = client.clone();
+        set.spawn(async move { client.delete_ref(&ref_name).await });
+    }
 
     let mut errors: Vec<ChetterError> = vec![];
-    for ref_obj in refs.iter() {
-        if let Err(e) = client
-            .delete_ref(&ref_obj.full_name.replace("refs/chetter/", ""))
-            .await
-        {
-            errors.push(e);
+    while let Some(res) = set.join_next().await {
+        match res {
+            Ok(Ok(_)) => (),
+            Ok(Err(e)) => errors.push(e),
+            Err(e) => errors.push(e.into()),
         }
     }
 
