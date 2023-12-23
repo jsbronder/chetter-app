@@ -10,6 +10,7 @@ pub enum ChetterError {
     JSONWebTokenError(jsonwebtoken::errors::Error),
     Octocrab(octocrab::Error),
     TOMLParseError(toml::de::Error),
+    JoinError(tokio::task::JoinError),
 }
 
 impl From<std::io::Error> for ChetterError {
@@ -36,6 +37,12 @@ impl From<octocrab::Error> for ChetterError {
     }
 }
 
+impl From<tokio::task::JoinError> for ChetterError {
+    fn from(error: tokio::task::JoinError) -> Self {
+        Self::JoinError(error)
+    }
+}
+
 impl std::error::Error for ChetterError {}
 
 impl std::fmt::Display for ChetterError {
@@ -46,6 +53,7 @@ impl std::fmt::Display for ChetterError {
             ChetterError::JSONWebTokenError(e) => write!(f, "{}", e),
             ChetterError::Octocrab(e) => write!(f, "{}", e),
             ChetterError::TOMLParseError(e) => write!(f, "{}", e),
+            ChetterError::JoinError(e) => write!(f, "{}", e),
         }
     }
 }
