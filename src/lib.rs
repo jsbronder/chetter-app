@@ -171,12 +171,8 @@ async fn close_pr<T: RepositoryController + Sync + Send + 'static>(
     let refs: Vec<String> = client
         .matching_refs(&format!("{}/", pr))
         .await?
-        .iter()
-        .map(|ref_obj| {
-            ref_obj
-                .full_name
-                .replace(&format!("{}/", github::REF_NS), "")
-        })
+        .into_iter()
+        .map(|ref_obj| ref_obj.full_name)
         .collect();
 
     let client = std::sync::Arc::new(client);
@@ -299,7 +295,7 @@ mod tests {
     use mockall::predicate::*;
 
     use super::*;
-    use crate::github::{MockRepositoryController, Ref, REF_NS};
+    use crate::github::{MockRepositoryController, Ref};
 
     #[tokio::test]
     async fn test_open_pr() {
@@ -347,7 +343,7 @@ mod tests {
         let matches = refs
             .iter()
             .map(|r| Ref {
-                full_name: format!("{REF_NS}/{r}"),
+                full_name: r.into(),
                 sha: "_".into(),
             })
             .collect();
@@ -378,13 +374,13 @@ mod tests {
             .with(eq(format!("{num}/")))
             .returning(move |_| {
                 let refs = vec![
-                    format!("{REF_NS}/{num}/head"),
-                    format!("{REF_NS}/{num}/head-base"),
-                    format!("{REF_NS}/{num}/v4"),
-                    format!("{REF_NS}/{num}/v4-base"),
-                    format!("{REF_NS}/{num}/reviewer-v2"),
-                    format!("{REF_NS}/{num}/nick-v99-head"),
-                    format!("{REF_NS}/{num}/junk"),
+                    format!("{num}/head"),
+                    format!("{num}/head-base"),
+                    format!("{num}/v4"),
+                    format!("{num}/v4-base"),
+                    format!("{num}/reviewer-v2"),
+                    format!("{num}/nick-v99-head"),
+                    format!("{num}/junk"),
                 ];
 
                 Ok(refs
@@ -427,11 +423,11 @@ mod tests {
             .with(eq(format!("{num}/")))
             .returning(move |_| {
                 let refs = vec![
-                    format!("{REF_NS}/{num}/v4"),
-                    format!("{REF_NS}/{num}/v4-base"),
-                    format!("{REF_NS}/{num}/reviewer-v2"),
-                    format!("{REF_NS}/{num}/nick-v99-head"),
-                    format!("{REF_NS}/{num}/junk"),
+                    format!("{num}/v4"),
+                    format!("{num}/v4-base"),
+                    format!("{num}/reviewer-v2"),
+                    format!("{num}/nick-v99-head"),
+                    format!("{num}/junk"),
                 ];
 
                 Ok(refs
@@ -475,13 +471,13 @@ mod tests {
             .with(eq(format!("{num}/{user}")))
             .returning(move |_| {
                 let refs = vec![
-                    format!("{REF_NS}/{num}/{user}-head"),
-                    format!("{REF_NS}/{num}/{user}-head-base"),
-                    format!("{REF_NS}/{num}/{user}-v2"),
-                    format!("{REF_NS}/{num}/{user}-v2-base"),
-                    format!("{REF_NS}/{num}/{user}-v3"),
-                    format!("{REF_NS}/{num}/{user}-v3-base"),
-                    format!("{REF_NS}/{num}/{user}-v99-junk"),
+                    format!("{num}/{user}-head"),
+                    format!("{num}/{user}-head-base"),
+                    format!("{num}/{user}-v2"),
+                    format!("{num}/{user}-v2-base"),
+                    format!("{num}/{user}-v3"),
+                    format!("{num}/{user}-v3-base"),
+                    format!("{num}/{user}-v99-junk"),
                 ];
 
                 Ok(refs
@@ -525,9 +521,9 @@ mod tests {
             .with(eq(format!("{num}/{user}")))
             .returning(move |_| {
                 let refs = vec![
-                    format!("{REF_NS}/{num}/{user}-v3"),
-                    format!("{REF_NS}/{num}/{user}-v3-base"),
-                    format!("{REF_NS}/{num}/{user}-v99-junk"),
+                    format!("{num}/{user}-v3"),
+                    format!("{num}/{user}-v3-base"),
+                    format!("{num}/{user}-v99-junk"),
                 ];
 
                 Ok(refs

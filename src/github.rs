@@ -17,7 +17,7 @@ use mockall::automock;
 use crate::error::ChetterError;
 
 /// Namespace under which all references will be created.
-pub const REF_NS: &str = "refs/chetter";
+const REF_NS: &str = "refs/chetter";
 
 /// Git reference
 #[derive(Debug, Clone)]
@@ -260,7 +260,7 @@ impl RepositoryController for RepositoryClient {
                 };
 
                 Some(Ref {
-                    full_name: r.ref_field.clone(),
+                    full_name: r.ref_field.replace(&format!("{REF_NS}/"), ""),
                     sha: sha.clone(),
                 })
             })
