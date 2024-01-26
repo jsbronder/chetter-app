@@ -248,9 +248,9 @@ impl RepositoryController for RepositoryClient {
             .all_pages::<octocrab::models::repos::Ref>(page)
             .await?;
         Ok(results
-            .iter()
+            .into_iter()
             .filter_map(|r| {
-                let sha = match &r.object {
+                let sha = match r.object {
                     octocrab::models::repos::Object::Commit { sha, .. } => sha,
                     octocrab::models::repos::Object::Tag { sha, .. } => sha,
                     _ => {
@@ -261,7 +261,7 @@ impl RepositoryController for RepositoryClient {
 
                 Some(Ref {
                     full_name: r.ref_field.replace(&format!("{REF_NS}/"), ""),
-                    sha: sha.clone(),
+                    sha,
                 })
             })
             .collect())
