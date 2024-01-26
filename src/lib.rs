@@ -352,10 +352,10 @@ mod tests {
             .times(1)
             .with(eq(format!("{num}/")))
             .return_once(|_| Ok(matches));
-        refs.iter().for_each(|r| {
+        refs.into_iter().for_each(|r| {
             mock.expect_delete_ref()
                 .times(1)
-                .with(eq(r.to_string()))
+                .with(eq(r))
                 .return_once(|_| Ok(()));
         });
         let r = close_pr(mock, num).await;
@@ -384,10 +384,10 @@ mod tests {
                 ];
 
                 Ok(refs
-                    .iter()
+                    .into_iter()
                     .map(|r| Ref {
-                        full_name: r.into(),
-                        sha: "_".into(),
+                        full_name: r,
+                        sha: "_".to_string(),
                     })
                     .collect())
             });
@@ -431,10 +431,10 @@ mod tests {
                 ];
 
                 Ok(refs
-                    .iter()
+                    .into_iter()
                     .map(|r| Ref {
-                        full_name: r.into(),
-                        sha: "_".into(),
+                        full_name: r,
+                        sha: "_".to_string(),
                     })
                     .collect())
             });
@@ -481,9 +481,9 @@ mod tests {
                 ];
 
                 Ok(refs
-                    .iter()
+                    .into_iter()
                     .map(|r| Ref {
-                        full_name: r.into(),
+                        full_name: r,
                         sha: "_".into(),
                     })
                     .collect())
@@ -527,9 +527,9 @@ mod tests {
                 ];
 
                 Ok(refs
-                    .iter()
+                    .into_iter()
                     .map(|r| Ref {
-                        full_name: r.into(),
+                        full_name: r,
                         sha: "_".into(),
                     })
                     .collect())
