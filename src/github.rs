@@ -17,7 +17,10 @@ use mockall::automock;
 use crate::error::ChetterError;
 
 /// Namespace under which all references will be created.
-const REF_NS: &str = "refs/chetter";
+// This has to be under refs/heads, refs/tags, refs/notes or refs/guest in order to use GraphQL per
+// https://github.com/orgs/community/discussions/83980.  GraphQL is important so that we can delete
+// hundreds of references with a single API call when a PR is closed.
+const REF_NS: &str = "refs/heads/pr";
 
 /// Git reference
 #[derive(Debug, Clone)]
