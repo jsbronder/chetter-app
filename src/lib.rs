@@ -172,7 +172,11 @@ async fn close_pr<T: RepositoryController + Sync + Send + 'static>(
         .matching_refs(&format!("{}/", pr))
         .await?
         .iter()
-        .map(|ref_obj| ref_obj.full_name.replace("refs/chetter/", ""))
+        .map(|ref_obj| {
+            ref_obj
+                .full_name
+                .replace(&format!("{}/", github::REF_NS), "")
+        })
         .collect();
 
     let client = std::sync::Arc::new(client);
@@ -295,7 +299,7 @@ mod tests {
     use mockall::predicate::*;
 
     use super::*;
-    use crate::github::{MockRepositoryController, Ref};
+    use crate::github::{MockRepositoryController, Ref, REF_NS};
 
     #[tokio::test]
     async fn test_open_pr() {
@@ -343,7 +347,7 @@ mod tests {
         let matches = refs
             .iter()
             .map(|r| Ref {
-                full_name: format!("refs/chetter/{r}"),
+                full_name: format!("{REF_NS}/{r}"),
                 sha: "_".into(),
             })
             .collect();
@@ -374,13 +378,13 @@ mod tests {
             .with(eq(format!("{num}/")))
             .returning(move |_| {
                 let refs = vec![
-                    format!("refs/chetter/{num}/head"),
-                    format!("refs/chetter/{num}/head-base"),
-                    format!("refs/chetter/{num}/v4"),
-                    format!("refs/chetter/{num}/v4-base"),
-                    format!("refs/chetter/{num}/reviewer-v2"),
-                    format!("refs/chetter/{num}/nick-v99-head"),
-                    format!("refs/chetter/{num}/junk"),
+                    format!("{REF_NS}/{num}/head"),
+                    format!("{REF_NS}/{num}/head-base"),
+                    format!("{REF_NS}/{num}/v4"),
+                    format!("{REF_NS}/{num}/v4-base"),
+                    format!("{REF_NS}/{num}/reviewer-v2"),
+                    format!("{REF_NS}/{num}/nick-v99-head"),
+                    format!("{REF_NS}/{num}/junk"),
                 ];
 
                 Ok(refs
@@ -423,11 +427,11 @@ mod tests {
             .with(eq(format!("{num}/")))
             .returning(move |_| {
                 let refs = vec![
-                    format!("refs/chetter/{num}/v4"),
-                    format!("refs/chetter/{num}/v4-base"),
-                    format!("refs/chetter/{num}/reviewer-v2"),
-                    format!("refs/chetter/{num}/nick-v99-head"),
-                    format!("refs/chetter/{num}/junk"),
+                    format!("{REF_NS}/{num}/v4"),
+                    format!("{REF_NS}/{num}/v4-base"),
+                    format!("{REF_NS}/{num}/reviewer-v2"),
+                    format!("{REF_NS}/{num}/nick-v99-head"),
+                    format!("{REF_NS}/{num}/junk"),
                 ];
 
                 Ok(refs
@@ -471,13 +475,13 @@ mod tests {
             .with(eq(format!("{num}/{user}")))
             .returning(move |_| {
                 let refs = vec![
-                    format!("refs/chetter/{num}/{user}-head"),
-                    format!("refs/chetter/{num}/{user}-head-base"),
-                    format!("refs/chetter/{num}/{user}-v2"),
-                    format!("refs/chetter/{num}/{user}-v2-base"),
-                    format!("refs/chetter/{num}/{user}-v3"),
-                    format!("refs/chetter/{num}/{user}-v3-base"),
-                    format!("refs/chetter/{num}/{user}-v99-junk"),
+                    format!("{REF_NS}/{num}/{user}-head"),
+                    format!("{REF_NS}/{num}/{user}-head-base"),
+                    format!("{REF_NS}/{num}/{user}-v2"),
+                    format!("{REF_NS}/{num}/{user}-v2-base"),
+                    format!("{REF_NS}/{num}/{user}-v3"),
+                    format!("{REF_NS}/{num}/{user}-v3-base"),
+                    format!("{REF_NS}/{num}/{user}-v99-junk"),
                 ];
 
                 Ok(refs
@@ -521,9 +525,9 @@ mod tests {
             .with(eq(format!("{num}/{user}")))
             .returning(move |_| {
                 let refs = vec![
-                    format!("refs/chetter/{num}/{user}-v3"),
-                    format!("refs/chetter/{num}/{user}-v3-base"),
-                    format!("refs/chetter/{num}/{user}-v99-junk"),
+                    format!("{REF_NS}/{num}/{user}-v3"),
+                    format!("{REF_NS}/{num}/{user}-v3-base"),
+                    format!("{REF_NS}/{num}/{user}-v99-junk"),
                 ];
 
                 Ok(refs

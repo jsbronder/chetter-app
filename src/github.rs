@@ -16,6 +16,9 @@ use mockall::automock;
 
 use crate::error::ChetterError;
 
+/// Namespace under which all references will be created.
+pub const REF_NS: &str = "refs/chetter";
+
 /// Git reference
 #[derive(Debug, Clone)]
 pub struct Ref {
@@ -112,7 +115,7 @@ impl RepositoryClient {
 #[async_trait]
 /// Types that can control symbolic git references in a repository.
 ///
-/// The API ensures that all references are located under `refs/chetter/`.
+/// The API ensures that all references are located under {REF_NS}.
 ///
 /// # Examples
 ///
@@ -136,40 +139,40 @@ impl RepositoryClient {
 /// async fn foo() {
 ///     let client = NullClient;
 ///
-///     // Update `refs/chetter/1234/existing-ref` to sha `abc1234`
+///     // Update `{REF_NS}/1234/existing-ref` to sha `abc1234`
 ///     assert!(client.create_ref("1234/existing-ref", "abc1234").await.is_ok());
 /// }
 /// ```
 
 pub trait RepositoryController {
-    /// Create a new reference (rooted at *refs/chetter/*) to the specified sha.
+    /// Create a new reference (rooted at {REF_NS}/*) to the specified sha.
     async fn create_ref(&self, ref_name: &str, sha: &str) -> Result<(), ChetterError>;
 
-    /// Update an existing reference (rooted at *refs/chetter/*) to the specified sha.
+    /// Update an existing reference (rooted at *{REF_NS}/*) to the specified sha.
     async fn update_ref(&self, ref_name: &str, sha: &str) -> Result<(), ChetterError>;
 
-    /// Delete an existing reference (rooted at *refs/chetter/*).
+    /// Delete an existing reference (rooted at *{REF_NS}/*).
     async fn delete_ref(&self, ref_name: &str) -> Result<(), ChetterError>;
 
-    /// Get a vector of references (rooted at *refs/chetter/*) that end with the specified search
+    /// Get a vector of references (rooted at *{REF_NS}/*) that end with the specified search
     /// string.
     ///
     /// For example `controller.matching_refs("abc/d")` will match:
-    ///     - refs/chetter/abc/def
-    ///     - refs/chetter/abc/d/ef
-    ///     - refs/chetter/abc/d
+    ///     - {REF_NS}/abc/def
+    ///     - {REF_NS}/abc/d/ef
+    ///     - {REF_NS}/abc/d
     /// but will not match:
-    ///     - refs/chetter/other/abc/d
-    ///     - refs/chetter/ab
+    ///     - {REF_NS}/other/abc/d
+    ///     - {REF_NS}/ab
     async fn matching_refs(&self, search: &str) -> Result<Vec<Ref>, ChetterError>;
 }
 
 #[async_trait]
 impl RepositoryController for RepositoryClient {
     async fn create_ref(&self, ref_name: &str, sha: &str) -> Result<(), ChetterError> {
-        // We use Commit so that we can use a full refspec, refs/chetter/..., that won't get
+        // We use Commit so that we can use a full refspec, refs/..., that won't get
         // modified by ref_url() or full_ref_url().
-        let full_ref = Reference::Commit(format!("refs/chetter/{}", ref_name));
+        let full_ref = Reference::Commit(format!("{}/{}", REF_NS, ref_name));
         match self
             .crab
             .repos(&self.org, &self.repo)
@@ -177,7 +180,7 @@ impl RepositoryController for RepositoryClient {
             .await
         {
             Ok(_) => {
-                info!("created refs/chetter/{} as {}", ref_name, &sha[0..8]);
+                info!("created {}/{} as {}", REF_NS, ref_name, &sha[0..8]);
                 Ok(())
             }
             Err(error) => {
@@ -190,16 +193,16 @@ impl RepositoryController for RepositoryClient {
     async fn update_ref(&self, ref_name: &str, sha: &str) -> Result<(), ChetterError> {
         let req = json!({"sha": &sha, "force": true});
         let url = format!(
-            "/repos/{}/{}/git/refs/chetter/{}",
-            self.org, self.repo, ref_name
+            "/repos/{}/{}/git/{}/{}",
+            self.org, self.repo, REF_NS, ref_name
         );
         match self.crab.post(&url, Some(&req)).await {
             Ok::<octocrab::models::repos::Ref, _>(_) => {
-                info!("updated refs/chetter/{} as {}", ref_name, &sha[0..8]);
+                info!("updated {}/{} as {}", REF_NS, ref_name, &sha[0..8]);
                 Ok(())
             }
             Err(error) => {
-                error!("Failed to update {} to {}", ref_name, &sha[0..8]);
+                error!("Failed to update {}/{} to {}", REF_NS, ref_name, &sha[0..8]);
                 Err(ChetterError::Octocrab(error))
             }
         }
@@ -210,31 +213,32 @@ impl RepositoryController for RepositoryClient {
             .crab
             ._delete(
                 format!(
-                    "/repos/{}/{}/git/refs/chetter/{}",
-                    self.org, self.repo, ref_name
+                    "/repos/{}/{}/git/{}/{}",
+                    self.org, self.repo, REF_NS, ref_name
                 ),
                 None::<&()>,
             )
             .await
         {
             Ok(_) => {
-                info!("deleted chetter/{}", ref_name);
+                info!("deleted {}/{}", REF_NS, ref_name);
                 Ok(())
             }
             Err(error) => {
-                error!("failed to delete chetter/{}: {:?}", ref_name, &error);
+                error!("failed to delete {}/{}: {:?}", REF_NS, ref_name, &error);
                 Err(ChetterError::Octocrab(error))
             }
         }
     }
 
     async fn matching_refs(&self, search: &str) -> Result<Vec<Ref>, ChetterError> {
+        let short_ns = &REF_NS[5..]; // Strip 'refs/'
         let page = self
             .crab
             .get(
                 format!(
-                    "/repos/{}/{}/git/matching-refs/chetter/{}",
-                    self.org, self.repo, search
+                    "/repos/{}/{}/git/matching-refs/{}/{}",
+                    self.org, self.repo, short_ns, search
                 ),
                 None::<&()>,
             )
