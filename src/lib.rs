@@ -343,6 +343,7 @@ mod tests {
         let matches = refs
             .iter()
             .map(|r| Ref {
+                node_id: format!("node_{r}"),
                 full_name: r.into(),
                 sha: "_".into(),
             })
@@ -386,6 +387,7 @@ mod tests {
                 Ok(refs
                     .into_iter()
                     .map(|r| Ref {
+                        node_id: format!("node_{r}"),
                         full_name: r,
                         sha: "_".to_string(),
                     })
@@ -433,6 +435,7 @@ mod tests {
                 Ok(refs
                     .into_iter()
                     .map(|r| Ref {
+                        node_id: format!("node_{r}"),
                         full_name: r,
                         sha: "_".to_string(),
                     })
@@ -483,6 +486,7 @@ mod tests {
                 Ok(refs
                     .into_iter()
                     .map(|r| Ref {
+                        node_id: format!("node_{r}"),
                         full_name: r,
                         sha: "_".into(),
                     })
@@ -529,6 +533,7 @@ mod tests {
                 Ok(refs
                     .into_iter()
                     .map(|r| Ref {
+                        node_id: format!("node_{r}"),
                         full_name: r,
                         sha: "_".into(),
                     })
