@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use indoc::formatdoc;
 use octocrab::{
     models::{
         webhook_events::{EventInstallation, WebhookEvent},
@@ -14,7 +15,7 @@ use tracing::{error, info, warn};
 #[cfg(test)]
 use mockall::automock;
 
-use crate::error::ChetterError;
+use crate::error::{ChetterError, GraphqlErrors};
 
 /// Namespace under which all references will be created.
 // This has to be under refs/heads, refs/tags, refs/notes or refs/guest in order to use GraphQL per
@@ -139,6 +140,7 @@ impl RepositoryClient {
 ///     async fn create_ref(&self, ref_name: &str, sha: &str) -> Result<(), ChetterError> { Ok(()) }
 ///     async fn update_ref(&self, ref_name: &str, sha: &str) -> Result<(), ChetterError> { Ok(()) }
 ///     async fn delete_ref(&self, ref_name: &str) -> Result<(), ChetterError> { Ok(()) }
+///     async fn delete_refs(&self, ref_names: &[Ref]) -> Result<(), ChetterError> { Ok(()) }
 ///     async fn matching_refs(&self, search: &str) -> Result<Vec<Ref>, ChetterError> { Ok(vec![]) }
 /// }
 ///
@@ -159,6 +161,9 @@ pub trait RepositoryController {
 
     /// Delete an existing reference (rooted at *{REF_NS}/*).
     async fn delete_ref(&self, ref_name: &str) -> Result<(), ChetterError>;
+
+    /// Delete existing references (rooted at *{REF_NS}/*).
+    async fn delete_refs(&self, ref_names: &[Ref]) -> Result<(), ChetterError>;
 
     /// Get a vector of references (rooted at *{REF_NS}/*) that end with the specified search
     /// string.
@@ -234,6 +239,61 @@ impl RepositoryController for RepositoryClient {
                 error!("failed to delete {}/{}: {:?}", REF_NS, ref_name, &error);
                 Err(ChetterError::Octocrab(error))
             }
+        }
+    }
+
+    async fn delete_refs(&self, refs: &[Ref]) -> Result<(), ChetterError> {
+        let mut errors: Vec<ChetterError> = vec![];
+
+        // Github GraphQL takes a ridiculous amount of time to delete references and will cut us
+        // off after 90s of CPU time or 60s of real time.
+        for chunk in refs.chunks(100) {
+            let mutations: String = chunk
+                .iter()
+                .enumerate()
+                .map(|(i, r)| {
+                    formatdoc!(
+                        r#"
+                        delete_{i}: deleteRef(input: {{
+                                refId: "{node_id}",
+                                clientMutationId: "{full_name}"
+                            }}) {{
+                            clientMutationId
+                        }}
+                        "#,
+                        node_id = r.node_id,
+                        full_name = r.full_name,
+                    )
+                })
+                .collect();
+            let query = json!({"query": format!("mutation {{\n{}\n}}", mutations)});
+            info!("Sending mutation to delete {} refs", chunk.len());
+
+            match self.crab.graphql(&query).await {
+                // graphql errors are ignored
+                // https://github.com/XAMPPRocky/octocrab/issues/78
+                Ok::<serde_json::Value, _>(resp) => {
+                    if let Ok(e) = serde_json::from_value::<GraphqlErrors>(resp) {
+                        e.errors.iter().for_each(|e| {
+                            error!("error: {}", e.message);
+                        });
+                        errors.push(ChetterError::GithubGraphqlError(e));
+                    } else {
+                        chunk.iter().for_each(|r| {
+                            info!("deleted {}/{}", REF_NS, r.full_name);
+                        });
+                    }
+                }
+                Err(error) => {
+                    error!("failed to delete references: {:?}", &error);
+                    errors.push(ChetterError::Octocrab(error));
+                }
+            };
+        }
+
+        match errors.pop() {
+            None => Ok(()),
+            Some(e) => Err(e),
         }
     }
 
