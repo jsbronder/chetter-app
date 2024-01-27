@@ -30,6 +30,9 @@ pub struct Ref {
 
     /// Full SHA-1 object name
     pub sha: String,
+
+    /// GraphQL node_id
+    pub node_id: String,
 }
 
 /// GitHub Application Client.
@@ -265,6 +268,7 @@ impl RepositoryController for RepositoryClient {
                 Some(Ref {
                     full_name: r.ref_field.replace(&format!("{REF_NS}/"), ""),
                     sha,
+                    node_id: r.node_id,
                 })
             })
             .collect())
