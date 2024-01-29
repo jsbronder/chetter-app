@@ -24,7 +24,7 @@ use crate::error::{ChetterError, GraphqlErrors};
 const REF_NS: &str = "refs/heads/pr";
 
 /// Git reference
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Ref {
     /// Symbolic reference name
     pub full_name: String,

@@ -168,34 +168,9 @@ async fn close_pr<T: RepositoryController + Sync + Send + 'static>(
     client: T,
     pr: u64,
 ) -> Result<(), ChetterError> {
-    let refs: Vec<String> = client
-        .matching_refs(&format!("{}/", pr))
-        .await?
-        .into_iter()
-        .map(|ref_obj| ref_obj.full_name)
-        .collect();
-
-    let client = std::sync::Arc::new(client);
-
-    let mut set = tokio::task::JoinSet::new();
-    for ref_name in refs {
-        let client = client.clone();
-        set.spawn(async move { client.delete_ref(&ref_name).await });
-    }
-
-    let mut errors: Vec<ChetterError> = vec![];
-    while let Some(res) = set.join_next().await {
-        match res {
-            Ok(Ok(_)) => (),
-            Ok(Err(e)) => errors.push(e),
-            Err(e) => errors.push(e.into()),
-        }
-    }
-
-    match errors.pop() {
-        None => Ok(()),
-        Some(e) => Err(e),
-    }
+    let refs = client.matching_refs(&format!("{}/", pr)).await?;
+    client.delete_refs(&refs).await?;
+    Ok(())
 }
 
 async fn synchronize_pr(
@@ -340,7 +315,7 @@ mod tests {
             format!("{num}/reviewer-v2-base"),
             format!("{num}/reviewer-head"),
         ];
-        let matches = refs
+        let matches: Vec<Ref> = refs
             .iter()
             .map(|r| Ref {
                 node_id: format!("node_{r}"),
@@ -348,17 +323,16 @@ mod tests {
                 sha: "_".into(),
             })
             .collect();
+        let to_delete = matches.clone();
 
         mock.expect_matching_refs()
             .times(1)
             .with(eq(format!("{num}/")))
             .return_once(|_| Ok(matches));
-        refs.into_iter().for_each(|r| {
-            mock.expect_delete_ref()
-                .times(1)
-                .with(eq(r))
-                .return_once(|_| Ok(()));
-        });
+        mock.expect_delete_refs()
+            .times(1)
+            .with(eq(to_delete))
+            .return_once(|_| Ok(()));
         let r = close_pr(mock, num).await;
         assert!(r.is_ok());
     }
