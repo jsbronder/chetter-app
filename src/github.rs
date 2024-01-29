@@ -139,7 +139,6 @@ impl RepositoryClient {
 /// impl RepositoryController for NullClient {
 ///     async fn create_ref(&self, ref_name: &str, sha: &str) -> Result<(), ChetterError> { Ok(()) }
 ///     async fn update_ref(&self, ref_name: &str, sha: &str) -> Result<(), ChetterError> { Ok(()) }
-///     async fn delete_ref(&self, ref_name: &str) -> Result<(), ChetterError> { Ok(()) }
 ///     async fn delete_refs(&self, ref_names: &[Ref]) -> Result<(), ChetterError> { Ok(()) }
 ///     async fn matching_refs(&self, search: &str) -> Result<Vec<Ref>, ChetterError> { Ok(vec![]) }
 /// }
@@ -158,9 +157,6 @@ pub trait RepositoryController {
 
     /// Update an existing reference (rooted at *{REF_NS}/*) to the specified sha.
     async fn update_ref(&self, ref_name: &str, sha: &str) -> Result<(), ChetterError>;
-
-    /// Delete an existing reference (rooted at *{REF_NS}/*).
-    async fn delete_ref(&self, ref_name: &str) -> Result<(), ChetterError>;
 
     /// Delete existing references (rooted at *{REF_NS}/*).
     async fn delete_refs(&self, ref_names: &[Ref]) -> Result<(), ChetterError>;
@@ -214,29 +210,6 @@ impl RepositoryController for RepositoryClient {
             }
             Err(error) => {
                 error!("Failed to update {}/{} to {}", REF_NS, ref_name, &sha[0..8]);
-                Err(ChetterError::Octocrab(error))
-            }
-        }
-    }
-
-    async fn delete_ref(&self, ref_name: &str) -> Result<(), ChetterError> {
-        match self
-            .crab
-            ._delete(
-                format!(
-                    "/repos/{}/{}/git/{}/{}",
-                    self.org, self.repo, REF_NS, ref_name
-                ),
-                None::<&()>,
-            )
-            .await
-        {
-            Ok(_) => {
-                info!("deleted {}/{}", REF_NS, ref_name);
-                Ok(())
-            }
-            Err(error) => {
-                error!("failed to delete {}/{}: {:?}", REF_NS, ref_name, &error);
                 Err(ChetterError::Octocrab(error))
             }
         }
