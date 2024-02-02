@@ -2,6 +2,17 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
+use serde::Deserialize;
+
+#[derive(Deserialize, Debug)]
+pub struct GraphqlError {
+    pub message: String,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct GraphqlErrors {
+    pub errors: Vec<GraphqlError>,
+}
 
 #[derive(Debug)]
 pub enum ChetterError {
@@ -11,6 +22,7 @@ pub enum ChetterError {
     Octocrab(octocrab::Error),
     TOMLParseError(toml::de::Error),
     JoinError(tokio::task::JoinError),
+    GithubGraphqlError(GraphqlErrors),
 }
 
 impl From<std::io::Error> for ChetterError {
@@ -54,6 +66,10 @@ impl std::fmt::Display for ChetterError {
             ChetterError::Octocrab(e) => write!(f, "{}", e),
             ChetterError::TOMLParseError(e) => write!(f, "{}", e),
             ChetterError::JoinError(e) => write!(f, "{}", e),
+            ChetterError::GithubGraphqlError(e) => {
+                let errs: Vec<&str> = e.errors.iter().map(|e| e.message.as_ref()).collect();
+                write!(f, "GraphQL Errors: {}", errs.join(" | "))
+            }
         }
     }
 }
@@ -73,5 +89,18 @@ mod tests {
         use std::io::Error;
         let err = ChetterError::IOError(Error::from_raw_os_error(2));
         assert_eq!("No such file or directory (os error 2)", err.to_string());
+    }
+
+    #[test]
+    fn graphql_errors() {
+        let j = serde_json::json!({
+            "ignored": "stuff",
+            "errors": [
+                {"ignored": "key", "message": "msg1"},
+                {"message": "msg2"},
+            ]
+        });
+        let err = ChetterError::GithubGraphqlError(serde_json::from_value(j).unwrap());
+        assert_eq!("GraphQL Errors: msg1 | msg2", err.to_string());
     }
 }
