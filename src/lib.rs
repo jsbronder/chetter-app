@@ -73,7 +73,7 @@ impl State {
                     repo = repo_client.full_name(),
                     pr = payload.number
                 );
-                async move { on_pull_request(repo_client, payload).await }
+                async move { on_pull_request(repo_client, self.tasks.clone(), payload).await }
                     .instrument(span)
                     .await?;
             }
@@ -104,6 +104,7 @@ impl State {
 
 async fn on_pull_request(
     repo_client: RepositoryClient,
+    tasks: TaskTracker,
     payload: Box<PullRequestWebhookEventPayload>,
 ) -> Result<(), ChetterError> {
     match payload.action {
@@ -137,9 +138,15 @@ async fn on_pull_request(
         }
         PullRequestWebhookEventAction::Closed => {
             let sub_span = tracing::span!(tracing::Level::INFO, "close");
-            async move { close_pr(repo_client, payload.number).await }
-                .instrument(sub_span)
-                .await
+
+            // We can end up with a lot of references to remove.  We can do that in a single API
+            // call using GraphQL, but it still takes over 10s to delete just 50 references.
+            // Given that, we have no real choice but to run this task in the background and
+            // report success to GitHub before it decides to hang up on us.
+            tasks.spawn(
+                async move { close_pr(repo_client, payload.number).await }.instrument(sub_span),
+            );
+            Ok(())
         }
 
         _ => {
