@@ -16,20 +16,35 @@ use tracing::{debug, error, Instrument};
 pub mod error;
 pub mod github;
 
+/// Chetter Application state
+#[derive(Clone)]
+pub struct State {
+    /// Github Application Client
+    app_client: AppClient,
+}
+
+impl State {
+    /// Create a new State using the specified configuration file
+    pub fn new(config_path: String) -> Result<Self, String> {
+        let app_client = match AppClient::new(config_path) {
+            Ok(v) => v,
+            Err(e) => return Err(format!("{e}")),
+        };
+        Ok(Self { app_client })
+    }
+}
+
 /// Dispatch GitHub Webhook Events
 ///
 /// Handles PullRequest and PullRequestReview events, ignores all others.
-pub async fn webhook_dispatcher(
-    app_client: AppClient,
-    event: WebhookEvent,
-) -> Result<(), ChetterError> {
+pub async fn webhook_dispatcher(state: State, event: WebhookEvent) -> Result<(), ChetterError> {
     // Early exit to avoid making a repo client when not necessary
     match event.specific {
         WebhookEventPayload::PullRequest(_) | WebhookEventPayload::PullRequestReview(_) => (),
         _ => return Ok(()),
     }
 
-    let repo_client = app_client.repo_client(&event).await?;
+    let repo_client = state.app_client.repo_client(&event).await?;
     match event.specific {
         WebhookEventPayload::PullRequest(payload) => {
             let span = tracing::span!(
