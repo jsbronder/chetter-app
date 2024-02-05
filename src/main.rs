@@ -5,7 +5,7 @@ use tokio::signal;
 use tracing::{debug, error};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use chetter_app::{error::ChetterError, webhook_dispatcher, State};
+use chetter_app::{error::ChetterError, State};
 
 async fn post_github_events(
     axum::extract::State(state): axum::extract::State<State>,
@@ -45,7 +45,7 @@ async fn post_github_events(
         }
     };
 
-    webhook_dispatcher(state, event).await
+    state.webhook_dispatcher(event).await
 }
 
 async fn shutdown_signal() {
