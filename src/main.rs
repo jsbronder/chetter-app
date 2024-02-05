@@ -5,10 +5,10 @@ use tokio::signal;
 use tracing::{debug, error};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use chetter_app::{error::ChetterError, github::AppClient, webhook_dispatcher};
+use chetter_app::{error::ChetterError, webhook_dispatcher, State};
 
 async fn post_github_events(
-    axum::extract::State(app_client): axum::extract::State<AppClient>,
+    axum::extract::State(state): axum::extract::State<State>,
     headers: HeaderMap,
     body: String,
 ) -> Result<(), ChetterError> {
@@ -45,7 +45,7 @@ async fn post_github_events(
         }
     };
 
-    webhook_dispatcher(app_client, event).await
+    webhook_dispatcher(state, event).await
 }
 
 async fn shutdown_signal() {
@@ -92,7 +92,7 @@ async fn main() {
         std::process::exit(1);
     };
 
-    let app_client = AppClient::new(config_path).unwrap_or_else(|err| {
+    let state = State::new(config_path).unwrap_or_else(|err| {
         eprintln!("{}", err);
         std::process::exit(1);
     });
@@ -107,7 +107,7 @@ async fn main() {
 
     let app = axum::Router::new()
         .route("/github/events", post(post_github_events))
-        .with_state(app_client);
+        .with_state(state);
 
     axum::Server::bind(&"0.0.0.0:3333".parse().unwrap())
         .serve(app.into_make_service())
