@@ -11,7 +11,8 @@ use octocrab::models::{
     },
 };
 use std::marker::{Send, Sync};
-use tracing::{debug, error, Instrument};
+use tokio_util::task::TaskTracker;
+use tracing::{debug, error, info, Instrument};
 
 pub mod error;
 pub mod github;
@@ -21,6 +22,9 @@ pub mod github;
 pub struct State {
     /// Github Application Client
     app_client: AppClient,
+
+    /// Background tasks
+    tasks: TaskTracker,
 }
 
 impl State {
@@ -30,7 +34,24 @@ impl State {
             Ok(v) => v,
             Err(e) => return Err(format!("{e}")),
         };
-        Ok(Self { app_client })
+        let tasks = TaskTracker::new();
+        Ok(Self { app_client, tasks })
+    }
+
+    /// Close the application state, giving any background tasks a chance to finish.
+    pub async fn close(&self) {
+        if !self.tasks.is_empty() {
+            use tokio::time::{timeout, Duration};
+
+            info!("waiting for {} background tasks", self.tasks.len());
+            self.tasks.close();
+            if timeout(Duration::from_secs(60), self.tasks.wait())
+                .await
+                .is_err()
+            {
+                error!("Timeout waiting for background tasks to complete");
+            }
+        }
     }
 
     /// Dispatch GitHub Webhook Events
