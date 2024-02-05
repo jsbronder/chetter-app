@@ -107,11 +107,13 @@ async fn main() {
 
     let app = axum::Router::new()
         .route("/github/events", post(post_github_events))
-        .with_state(state);
+        .with_state(state.clone());
 
     axum::Server::bind(&"0.0.0.0:3333".parse().unwrap())
         .serve(app.into_make_service())
         .with_graceful_shutdown(shutdown_signal())
         .await
         .unwrap();
+
+    state.close().await;
 }
