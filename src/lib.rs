@@ -32,53 +32,53 @@ impl State {
         };
         Ok(Self { app_client })
     }
-}
 
-/// Dispatch GitHub Webhook Events
-///
-/// Handles PullRequest and PullRequestReview events, ignores all others.
-pub async fn webhook_dispatcher(state: State, event: WebhookEvent) -> Result<(), ChetterError> {
-    // Early exit to avoid making a repo client when not necessary
-    match event.specific {
-        WebhookEventPayload::PullRequest(_) | WebhookEventPayload::PullRequestReview(_) => (),
-        _ => return Ok(()),
-    }
-
-    let repo_client = state.app_client.repo_client(&event).await?;
-    match event.specific {
-        WebhookEventPayload::PullRequest(payload) => {
-            let span = tracing::span!(
-                tracing::Level::WARN,
-                "pr",
-                repo = repo_client.full_name(),
-                pr = payload.number
-            );
-            async move { on_pull_request(repo_client, payload).await }
-                .instrument(span)
-                .await?;
+    /// Dispatch GitHub Webhook Events
+    ///
+    /// Handles PullRequest and PullRequestReview events, ignores all others.
+    pub async fn webhook_dispatcher(&self, event: WebhookEvent) -> Result<(), ChetterError> {
+        // Early exit to astatevoid making a repo client when not necessary
+        match event.specific {
+            WebhookEventPayload::PullRequest(_) | WebhookEventPayload::PullRequestReview(_) => (),
+            _ => return Ok(()),
         }
-        WebhookEventPayload::PullRequestReview(payload) => {
-            let Some(reviewer) = payload.review.user.as_ref() else {
-                let msg = "Missing .review.user";
-                error!(msg);
-                return Err(ChetterError::GithubParseError(msg.into()));
-            };
-            let login = reviewer.login.clone();
 
-            let span = tracing::span!(
-                tracing::Level::WARN,
-                "review",
-                repo = repo_client.full_name(),
-                pr = payload.pull_request.number,
-                reviewer = login,
-            );
-            async move { on_pull_request_review(repo_client, &login, payload).await }
-                .instrument(span)
-                .await?;
+        let repo_client = self.app_client.repo_client(&event).await?;
+        match event.specific {
+            WebhookEventPayload::PullRequest(payload) => {
+                let span = tracing::span!(
+                    tracing::Level::WARN,
+                    "pr",
+                    repo = repo_client.full_name(),
+                    pr = payload.number
+                );
+                async move { on_pull_request(repo_client, payload).await }
+                    .instrument(span)
+                    .await?;
+            }
+            WebhookEventPayload::PullRequestReview(payload) => {
+                let Some(reviewer) = payload.review.user.as_ref() else {
+                    let msg = "Missing .review.user";
+                    error!(msg);
+                    return Err(ChetterError::GithubParseError(msg.into()));
+                };
+                let login = reviewer.login.clone();
+
+                let span = tracing::span!(
+                    tracing::Level::WARN,
+                    "review",
+                    repo = repo_client.full_name(),
+                    pr = payload.pull_request.number,
+                    reviewer = login,
+                );
+                async move { on_pull_request_review(repo_client, &login, payload).await }
+                    .instrument(span)
+                    .await?;
+            }
+            _ => (),
         }
-        _ => (),
+        Ok(())
     }
-    Ok(())
 }
 
 async fn on_pull_request(
