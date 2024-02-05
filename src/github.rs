@@ -65,7 +65,7 @@ impl AppClient {
     }
 
     /// Create a new RepositoryClient using the `.installation` data in a webhook event.
-    pub async fn repo_client(self, ev: &WebhookEvent) -> Result<RepositoryClient, ChetterError> {
+    pub async fn repo_client(&self, ev: &WebhookEvent) -> Result<RepositoryClient, ChetterError> {
         let repo = ev
             .repository
             .as_ref()
