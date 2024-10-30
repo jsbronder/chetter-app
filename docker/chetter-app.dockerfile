@@ -1,4 +1,4 @@
-FROM docker.io/library/rust:1.74-alpine3.18 as builder
+FROM docker.io/library/rust:1.82-alpine3.20 as builder
 
 RUN apk add musl-dev
 
