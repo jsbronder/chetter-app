@@ -1,5 +1,5 @@
 Chetter monitors pull request events sent from Github and adds some quality of
-live improvements intended to assist code review.
+life improvements intended to assist code review.
 
 # Chetter References
 A conscientiousness author might explicitly publish any changes they push to a
