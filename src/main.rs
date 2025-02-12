@@ -1,7 +1,7 @@
 use axum::{http::header::HeaderMap, routing::post};
 use getopts::Options;
 use octocrab::models::webhook_events::WebhookEvent;
-use tokio::signal;
+use tokio::{net::TcpListener, signal};
 use tracing::{debug, error};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -109,8 +109,8 @@ async fn main() {
         .route("/github/events", post(post_github_events))
         .with_state(state.clone());
 
-    axum::Server::bind(&"0.0.0.0:3333".parse().unwrap())
-        .serve(app.into_make_service())
+    let listener = TcpListener::bind("0.0.0.0:3333").await.unwrap();
+    axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await
         .unwrap();

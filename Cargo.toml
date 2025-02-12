@@ -6,7 +6,7 @@ rust-version = "1.75"
 
 [dependencies]
 async-trait = "0.1"
-axum = "0.6"
+axum = "0.8"
 getopts = "0.2"
 indoc = "2"
 jsonwebtoken = "9.1"
