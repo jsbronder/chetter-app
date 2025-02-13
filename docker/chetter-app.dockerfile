@@ -1,4 +1,6 @@
-FROM docker.io/library/rust:1.82-alpine3.20 as builder
+ARG ALPINE_VERSION="3.21"
+
+FROM docker.io/library/rust:1.84-alpine${ALPINE_VERSION} as builder
 
 RUN apk add musl-dev
 
@@ -15,7 +17,7 @@ COPY ./src src
 RUN cargo install --path . --locked --offline
 
 # Prior image has all build deps, easier to start fresh to clean
-FROM alpine:3.18
+FROM alpine:${ALPINE_VERSION}
 COPY --from=builder /usr/local/cargo/bin/* /usr/local/bin
 
 ENTRYPOINT ["/usr/local/bin/chetter-app", "--config", "/config/chetter-app.toml"]
