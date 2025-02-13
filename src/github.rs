@@ -5,7 +5,6 @@ use octocrab::{
         webhook_events::{EventInstallation, WebhookEvent},
         InstallationToken,
     },
-    params::repos::Reference,
     Octocrab,
 };
 use serde::Deserialize;
@@ -177,16 +176,16 @@ pub trait RepositoryController {
 #[async_trait]
 impl RepositoryController for RepositoryClient {
     async fn create_ref(&self, ref_name: &str, sha: &str) -> Result<(), ChetterError> {
-        // We use Commit so that we can use a full refspec, refs/..., that won't get
-        // modified by ref_url() or full_ref_url().
-        let full_ref = Reference::Commit(format!("{}/{}", REF_NS, ref_name));
-        match self
-            .crab
-            .repos(&self.org, &self.repo)
-            .create_ref(&full_ref, sha)
-            .await
-        {
-            Ok(_) => {
+        // We can't use self.crab.repos.create_ref as we want to be able to support references that
+        // are not a tag or a branch.  However, the Reference::{Tag,Branch} passed into create_ref
+        // will append /refs/heads or /refs/tags when create_ref calls full_ref_url on it.
+        let page = format!("/repos/{}/{}/git/refs", self.org, self.repo);
+        let req = json!({
+            "ref": format!("{}/{}", REF_NS, ref_name),
+            "sha": sha});
+
+        match self.crab.post(page, Some(&req)).await {
+            Ok::<octocrab::models::repos::Ref, _>(_) => {
                 info!("created {}/{} as {}", REF_NS, ref_name, &sha[0..8]);
                 Ok(())
             }
