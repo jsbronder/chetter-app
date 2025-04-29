@@ -78,7 +78,7 @@ when the pull request is closed.
 
 - Create a container
     - Expose port 3333/tcp
-    - Add the directory containing `config.toml` as a volume mounted at `/config`
+    - Add the directory containing `chetter-app.toml` as a volume mounted at `/config`
 
     ```
     podman run --rm \
