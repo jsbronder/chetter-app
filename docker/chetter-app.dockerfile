@@ -1,6 +1,6 @@
 ARG ALPINE_VERSION="3.21"
 
-FROM docker.io/library/rust:1.84-alpine${ALPINE_VERSION} as builder
+FROM docker.io/library/rust:1.87-alpine${ALPINE_VERSION} as builder
 
 RUN apk add musl-dev
 
