@@ -1,0 +1,35 @@
+name: Push OCI image
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+jobs:
+  push_container_image:
+    name: Push OCI image to ghcr.io
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - name: Configure environment
+        run: |
+          echo 'REGISTRY=ghcr.io/${{ github.actor }}' >> $GITHUB_ENV
+          echo "VERSION=$(echo ${{ github.ref_name }} | sed 's,^v,,')" >> $GITHUB_ENV
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: checkout
+        uses: actions/checkout@v4
+      - name: toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: podman
+        run: sudo apt install podman
+      - name: build
+        run: make -C docker
+      - name: push
+        run: podman push ${{ env.REGISTRY }}/chetter-app:${{ env.VERSION }}
+
