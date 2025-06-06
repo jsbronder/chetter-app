@@ -241,7 +241,7 @@ async fn synchronize_pr(
     } else {
         let last_version: u32 = refs
             .iter()
-            .filter_map(|t| t.full_name.split('v').last()?.parse::<u32>().ok())
+            .filter_map(|t| t.full_name.split('v').next_back()?.parse::<u32>().ok())
             .max()
             .unwrap_or(0);
         last_version + 1
@@ -289,7 +289,7 @@ async fn bookmark_pr(
     } else {
         let last_version: u32 = refs
             .iter()
-            .filter_map(|t| t.full_name.split('v').last()?.parse::<u32>().ok())
+            .filter_map(|t| t.full_name.split('v').next_back()?.parse::<u32>().ok())
             .max()
             .unwrap_or(0);
         last_version + 1
