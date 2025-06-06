@@ -149,7 +149,6 @@ impl RepositoryClient {
 ///     assert!(client.create_ref("1234/existing-ref", "abc1234").await.is_ok());
 /// }
 /// ```
-
 pub trait RepositoryController {
     /// Create a new reference (rooted at {REF_NS}/*) to the specified sha.
     async fn create_ref(&self, ref_name: &str, sha: &str) -> Result<(), ChetterError>;
