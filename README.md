@@ -2,13 +2,13 @@ Chetter monitors pull request events sent from Github and adds some quality of
 life improvements intended to assist code review.
 
 # Chetter References
-A conscientiousness author might explicitly publish any changes they push to a
-pull request branch that is still under review.  Likewise, a diligent reviewer
-might create local branch/tag pointing to the tip of the branch they reviewed
-so that it could be compared against later pull request updates.  However,
-while we all wish each other the best, this is tedious work and easy to forget.
-Chetter takes care of all that by creating references in
-`refs/heads/pr/<pull request>/`.
+A conscientious author might explicitly publish any changes they push to a pull
+request branch that is still under review.  Likewise, a diligent reviewer might
+create local branch/tag pointing to the tip of the branch they reviewed so that
+it could be compared against later pull request updates.  However, while we all
+wish each other the best, this is tedious work and easy to forget.  Chetter
+takes care of all that by creating references in `refs/heads/pr/<pull
+request>/`.
 
 Each version of a pull request, defined as push to a branch with an open pull
 request, is tracked by `refs/heads/pr/<pull request>/v<version number>`.
