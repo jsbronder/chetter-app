@@ -15,7 +15,7 @@ jobs:
     steps:
       - name: Configure environment
         run: |
-          echo 'REGISTRY=ghcr.io/${{ github.actor }}' >> $GITHUB_ENV
+          echo 'REGISTRY=ghcr.io/${{ github.repository_owner }}' >> $GITHUB_ENV
           echo "VERSION=$(echo ${{ github.ref_name }} | sed 's,^v,,')" >> $GITHUB_ENV
       - name: Log in to the Container registry
         uses: docker/login-action@v3
