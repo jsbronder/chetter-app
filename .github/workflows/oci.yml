@@ -10,6 +10,7 @@ jobs:
     name: Push OCI image to ghcr.io
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       packages: write
     steps:
       - name: Configure environment
