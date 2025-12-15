@@ -2,6 +2,7 @@ use axum::{http::header::HeaderMap, routing::post};
 use getopts::Options;
 use octocrab::models::webhook_events::WebhookEvent;
 use tokio::{net::TcpListener, signal};
+use tower_http::trace::TraceLayer;
 use tracing::{debug, error};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -107,6 +108,7 @@ async fn main() {
 
     let app = axum::Router::new()
         .route("/github/events", post(post_github_events))
+        .layer(TraceLayer::new_for_http())
         .with_state(state.clone());
 
     let listener = TcpListener::bind("0.0.0.0:3333").await.unwrap();
