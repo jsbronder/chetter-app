@@ -1,0 +1,33 @@
+name: Set Commit Statuses
+
+on:
+  workflow_run:
+    workflows: ["Pull Request Check"]
+    types:
+      - completed
+
+jobs:
+  set-commit-statuses:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      statuses: write
+    steps:
+      - uses: jsbronder/actions/set-commit-statuses@v2
+      - name: mark branch status
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          state=failure
+          if [[ ${{ github.event.workflow_run.conclusion }} = success ]]; then
+            state=success
+          fi
+
+          set -e
+          gh api -X POST \
+            repos/${{ github.repository }}/statuses/${{ github.event.workflow_run.head_sha }} \
+            -f state="${state}" \
+            -f context="check/pr" \
+            -f description="Full pull request check ${state}" \
+            -f target_url="${{ github.event.workflow_run.html_url }}"

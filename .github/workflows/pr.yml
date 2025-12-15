@@ -1,0 +1,92 @@
+name: Pull Request Check
+on: pull_request
+
+jobs:
+  generate-cache:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        toolchain:
+          - stable
+          - 1.88
+    steps:
+      - uses: actions/checkout@v4
+      - name: toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ matrix.toolchain }}
+          components: clippy, rustfmt
+      - name: cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ matrix.toolchain }}-${{ hashFiles('**/Cargo.lock') }}
+      - name: build
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          cargo build
+          cargo build --profile test
+          cargo clippy --no-deps --all-targets -- --allow clippy::all
+
+  build-matrix:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      matrix: ${{ steps.expand-matrix.outputs.matrix }}
+    steps:
+      - uses: jsbronder/actions/expand-matrix@v2
+        id: expand-matrix
+        with:
+          matrix: |
+            [
+              {"name": "lint", "command": "make lint", "toolchain": "stable"},
+              {"name": "lint", "command": "make lint", "toolchain": "1.88"},
+              {"name": "test", "command": "make test", "toolchain": "stable"},
+              {"name": "test", "command": "make test", "toolchain": "1.88"}
+            ]
+
+  check:
+    runs-on: ubuntu-latest
+    needs: ['build-matrix', 'generate-cache']
+    permissions:
+      contents: read
+      statuses: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.build-matrix.outputs.matrix) }}
+    name: rust-${{ matrix.toolchain }}/${{ matrix.name }}/${{ matrix.short_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.sha }}
+      - name: toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ matrix.toolchain }}
+          components: clippy, rustfmt
+      - name: cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ matrix.toolchain }}-${{ hashFiles('**/Cargo.lock') }}-${{ matrix.sha }}
+          restore-keys: ${{ runner.os }}-cargo-${{ matrix.toolchain }}-${{ hashFiles('**/Cargo.lock') }}
+      - name: rust-${{ matrix.toolchain }}-${{ matrix.name }}/${{ matrix.short_sha }}
+        uses: jsbronder/actions/test-commit@v2
+        with:
+          sha: ${{ matrix.sha }}
+          context: check/rust-${{ matrix.toolchain }}-${{ matrix.name }}/${{ matrix.short_sha }}
+          command: ${{ matrix.command }}
