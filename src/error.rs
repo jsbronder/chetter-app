@@ -63,7 +63,7 @@ impl std::fmt::Display for ChetterError {
             ChetterError::GithubParseError(e) => write!(f, "{}", e),
             ChetterError::IOError(e) => write!(f, "{}", e),
             ChetterError::JSONWebTokenError(e) => write!(f, "{}", e),
-            ChetterError::Octocrab(e) => write!(f, "{}", e),
+            ChetterError::Octocrab(e) => write!(f, "{:?}", e),
             ChetterError::TOMLParseError(e) => write!(f, "{}", e),
             ChetterError::JoinError(e) => write!(f, "{}", e),
             ChetterError::GithubGraphqlError(e) => {
