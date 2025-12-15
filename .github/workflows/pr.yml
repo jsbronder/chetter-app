@@ -47,10 +47,10 @@ jobs:
         with:
           matrix: |
             [
-              {"name": "lint", "command": "cargo clippy && cargo fmt --check", "toolchain": "stable"},
-              {"name": "lint", "command": "cargo clippy && cargo fmt --check", "toolchain": "1.88"},
-              {"name": "test", "command": "cargo test", "toolchain": "stable"},
-              {"name": "test", "command": "cargo test", "toolchain": "1.88"}
+              {"name": "lint", "command": "make lint", "toolchain": "stable"},
+              {"name": "lint", "command": "make lint", "toolchain": "1.88"},
+              {"name": "test", "command": "make test", "toolchain": "stable"},
+              {"name": "test", "command": "make test", "toolchain": "1.88"}
             ]
 
   check:
