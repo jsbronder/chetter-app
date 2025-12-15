@@ -89,7 +89,19 @@ impl AppClient {
             }
         };
         let url = format!("/app/installations/{}/access_tokens", id);
-        let token: InstallationToken = self.crab.post(url, None::<&()>).await?;
+        let token: InstallationToken = match self.crab.post(url, None::<&()>).await {
+            Ok(token) => token,
+            Err(err) => {
+                error!(
+                    installation_id = id,
+                    org = %org,
+                    repo = %repo.name,
+                    error = ?err,
+                    "failed to fetch installation access token"
+                );
+                return Err(err.into());
+            }
+        };
         let crab = octocrab::OctocrabBuilder::new()
             .personal_token(token.token)
             .build()?;
@@ -189,7 +201,7 @@ impl RepositoryController for RepositoryClient {
                 Ok(())
             }
             Err(error) => {
-                error!("Failed to create {} as {}", ref_name, &sha[0..8]);
+                error!(error = ?error, "Failed to create {} as {}", ref_name, &sha[0..8]);
                 Err(ChetterError::Octocrab(error))
             }
         }
@@ -207,7 +219,7 @@ impl RepositoryController for RepositoryClient {
                 Ok(())
             }
             Err(error) => {
-                error!("Failed to update {}/{} to {}", REF_NS, ref_name, &sha[0..8]);
+                error!(error = ?error, "Failed to update {}/{} to {}", REF_NS, ref_name, &sha[0..8]);
                 Err(ChetterError::Octocrab(error))
             }
         }
@@ -256,7 +268,7 @@ impl RepositoryController for RepositoryClient {
                     }
                 }
                 Err(error) => {
-                    error!("failed to delete references: {:?}", &error);
+                    error!(error = ?error, "failed to delete references");
                     errors.push(ChetterError::Octocrab(error));
                 }
             };
@@ -270,7 +282,7 @@ impl RepositoryController for RepositoryClient {
 
     async fn matching_refs(&self, search: &str) -> Result<Vec<Ref>, ChetterError> {
         let short_ns = &REF_NS[5..]; // Strip 'refs/'
-        let page = self
+        let page = match self
             .crab
             .get(
                 format!(
@@ -279,11 +291,27 @@ impl RepositoryController for RepositoryClient {
                 ),
                 None::<&()>,
             )
-            .await?;
-        let results = self
+            .await
+        {
+            Ok(page) => page,
+            Err(err) => {
+                error!(error = ?err, "failed to get matching references {}/{}", short_ns, search);
+                return Err(err.into());
+            }
+        };
+
+        let results = match self
             .crab
             .all_pages::<octocrab::models::repos::Ref>(page)
-            .await?;
+            .await
+        {
+            Ok(results) => results,
+            Err(err) => {
+                error!(error = ?err, "failed to iterate matching references {}/{}", short_ns, search);
+                return Err(err.into());
+            }
+        };
+
         Ok(results
             .into_iter()
             .filter_map(|r| {
