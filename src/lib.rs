@@ -193,7 +193,7 @@ async fn open_pr(
     for ref_name in ["head", "v1"] {
         for (suffix, target) in [("", sha), ("-base", base)] {
             if let Err(e) = client
-                .create_ref(&format!("{}/{}{}", pr, ref_name, suffix), target)
+                .create_ref(&format!("{pr}/{ref_name}{suffix}"), target)
                 .await
             {
                 errors.push(e);
@@ -211,7 +211,7 @@ async fn close_pr<T: RepositoryController + Sync + Send + 'static>(
     client: T,
     pr: u64,
 ) -> Result<(), ChetterError> {
-    let refs = client.matching_refs(&format!("{}/", pr)).await?;
+    let refs = client.matching_refs(&format!("{pr}/")).await?;
     client.delete_refs(&refs).await?;
     Ok(())
 }
@@ -222,7 +222,7 @@ async fn synchronize_pr(
     sha: &str,
     base: &str,
 ) -> Result<(), ChetterError> {
-    let refs = client.matching_refs(&format!("{}/", pr)).await?;
+    let refs = client.matching_refs(&format!("{pr}/")).await?;
     let mut errors: Vec<ChetterError> = vec![];
 
     for (name, target) in [("head", sha), ("head-base", base)] {
@@ -267,9 +267,7 @@ async fn bookmark_pr(
     sha: &str,
     base: &str,
 ) -> Result<(), ChetterError> {
-    let refs = client
-        .matching_refs(&format!("{}/{}", pr, reviewer))
-        .await?;
+    let refs = client.matching_refs(&format!("{pr}/{reviewer}")).await?;
 
     let mut errors: Vec<ChetterError> = vec![];
 

@@ -39,7 +39,7 @@ async fn post_github_events(
     let event = match WebhookEvent::try_from_header_and_body(event_type, &body) {
         Ok(event) => event,
         Err(error) => {
-            let msg = format!("Failed to parse event: {}", error);
+            let msg = format!("Failed to parse event: {error}");
             error!(msg);
             debug!("{}", body);
             return Err(ChetterError::GithubParseError(msg));
@@ -52,14 +52,14 @@ async fn post_github_events(
 async fn shutdown_signal() {
     let sigint = async {
         signal::ctrl_c().await.unwrap_or_else(|err| {
-            panic!("failed to install SIGINT handler: {}", err);
+            panic!("failed to install SIGINT handler: {err}");
         });
     };
 
     let sigterm = async {
         signal::unix::signal(signal::unix::SignalKind::terminate())
             .unwrap_or_else(|err| {
-                panic!("failed to install SIGINT handler: {}", err);
+                panic!("failed to install SIGINT handler: {err}");
             })
             .recv()
             .await;
@@ -94,7 +94,7 @@ async fn main() {
     };
 
     let state = State::new(config_path).unwrap_or_else(|err| {
-        eprintln!("{}", err);
+        eprintln!("{err}");
         std::process::exit(1);
     });
 

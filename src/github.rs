@@ -88,7 +88,7 @@ impl AppClient {
                 ));
             }
         };
-        let url = format!("/app/installations/{}/access_tokens", id);
+        let url = format!("/app/installations/{id}/access_tokens");
         let token: InstallationToken = match self.crab.post(url, None::<&()>).await {
             Ok(token) => token,
             Err(err) => {
