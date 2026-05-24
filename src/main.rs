@@ -59,7 +59,7 @@ async fn shutdown_signal() {
     let sigterm = async {
         signal::unix::signal(signal::unix::SignalKind::terminate())
             .unwrap_or_else(|err| {
-                panic!("failed to install SIGINT handler: {err}");
+                panic!("failed to install SIGTERM handler: {err}");
             })
             .recv()
             .await;
