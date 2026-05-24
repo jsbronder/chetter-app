@@ -193,8 +193,8 @@ async fn open_pr(
 }
 
 #[tracing::instrument(name = "close", skip_all)]
-async fn close_pr<T: RepositoryController + Sync + Send + 'static>(
-    client: T,
+async fn close_pr(
+    client: impl RepositoryController + Sync + Send + 'static,
     pr: u64,
 ) -> Result<(), ChetterError> {
     let refs = client.matching_refs(&format!("{pr}/")).await?;
