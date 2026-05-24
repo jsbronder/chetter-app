@@ -8,6 +8,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [v0.1.7]
 - Docker image updated to rust:1.95-alpine3.23
 - Minimum rust version updated to 1.91
+- Dependencies updated
 
 ## [v0.1.6]
 ### Changed
