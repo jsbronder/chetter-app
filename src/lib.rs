@@ -55,7 +55,7 @@ impl State {
     ///
     /// Handles PullRequest and PullRequestReview events, ignores all others.
     pub async fn webhook_dispatcher(&self, event: WebhookEvent) -> Result<(), ChetterError> {
-        // Early exit to astatevoid making a repo client when not necessary
+        // Early exit to avoid making a repo client when not necessary
         match event.specific {
             WebhookEventPayload::PullRequest(_) | WebhookEventPayload::PullRequestReview(_) => (),
             _ => return Ok(()),
