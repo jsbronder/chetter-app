@@ -12,7 +12,7 @@ use octocrab::models::{
 };
 use std::marker::{Send, Sync};
 use tokio_util::task::TaskTracker;
-use tracing::{debug, error, info, Instrument};
+use tracing::{debug, error, info};
 
 pub mod error;
 pub mod github;
@@ -64,15 +64,7 @@ impl State {
         let repo_client = self.app_client.repo_client(&event).await?;
         match event.specific {
             WebhookEventPayload::PullRequest(payload) => {
-                let span = tracing::span!(
-                    tracing::Level::WARN,
-                    "pr",
-                    repo = repo_client.full_name(),
-                    pr = payload.number
-                );
-                async move { on_pull_request(repo_client, self.tasks.clone(), payload).await }
-                    .instrument(span)
-                    .await?;
+                on_pull_request(repo_client, self.tasks.clone(), payload).await?;
             }
             WebhookEventPayload::PullRequestReview(payload) => {
                 let Some(reviewer) = payload.review.user.as_ref() else {
@@ -81,17 +73,7 @@ impl State {
                     return Err(ChetterError::GithubParseError(msg.into()));
                 };
                 let login = reviewer.login.clone();
-
-                let span = tracing::span!(
-                    tracing::Level::WARN,
-                    "review",
-                    repo = repo_client.full_name(),
-                    pr = payload.pull_request.number,
-                    reviewer = login,
-                );
-                async move { on_pull_request_review(repo_client, &login, payload).await }
-                    .instrument(span)
-                    .await?;
+                on_pull_request_review(repo_client, &login, payload).await?;
             }
             _ => (),
         }
@@ -99,6 +81,15 @@ impl State {
     }
 }
 
+#[tracing::instrument(
+    level = "warn",
+    name = "pr",
+    skip_all,
+    fields(
+        repo = %repo_client.full_name(),
+        pr = payload.number
+    )
+)]
 async fn on_pull_request(
     repo_client: RepositoryClient,
     tasks: TaskTracker,
@@ -106,43 +97,29 @@ async fn on_pull_request(
 ) -> Result<(), ChetterError> {
     match payload.action {
         PullRequestWebhookEventAction::Synchronize => {
-            let sub_span = tracing::span!(tracing::Level::INFO, "synchronize");
-            async move {
-                synchronize_pr(
-                    repo_client,
-                    payload.number,
-                    &payload.pull_request.head.sha,
-                    &payload.pull_request.base.sha,
-                )
-                .await
-            }
-            .instrument(sub_span)
+            synchronize_pr(
+                repo_client,
+                payload.number,
+                &payload.pull_request.head.sha,
+                &payload.pull_request.base.sha,
+            )
             .await
         }
         PullRequestWebhookEventAction::Opened | PullRequestWebhookEventAction::Reopened => {
-            let sub_span = tracing::span!(tracing::Level::INFO, "open");
-            async move {
-                open_pr(
-                    repo_client,
-                    payload.number,
-                    &payload.pull_request.head.sha,
-                    &payload.pull_request.base.sha,
-                )
-                .await
-            }
-            .instrument(sub_span)
+            open_pr(
+                repo_client,
+                payload.number,
+                &payload.pull_request.head.sha,
+                &payload.pull_request.base.sha,
+            )
             .await
         }
         PullRequestWebhookEventAction::Closed => {
-            let sub_span = tracing::span!(tracing::Level::INFO, "close");
-
             // We can end up with a lot of references to remove.  We can do that in a single API
             // call using GraphQL, but it still takes over 10s to delete just 50 references.
             // Given that, we have no real choice but to run this task in the background and
             // report success to GitHub before it decides to hang up on us.
-            tasks.spawn(
-                async move { close_pr(repo_client, payload.number).await }.instrument(sub_span),
-            );
+            tasks.spawn(close_pr(repo_client, payload.number));
             Ok(())
         }
 
@@ -153,6 +130,16 @@ async fn on_pull_request(
     }
 }
 
+#[tracing::instrument(
+    level = "warn",
+    name = "review",
+    skip_all,
+    fields(
+        repo = %repo_client.full_name(),
+        pr = payload.pull_request.number,
+        reviewer = %reviewer
+    )
+)]
 async fn on_pull_request_review(
     repo_client: RepositoryClient,
     reviewer: &str,
@@ -179,6 +166,7 @@ async fn on_pull_request_review(
     }
 }
 
+#[tracing::instrument(name = "open", skip_all)]
 async fn open_pr(
     client: impl RepositoryController,
     pr: u64,
@@ -204,6 +192,7 @@ async fn open_pr(
     }
 }
 
+#[tracing::instrument(name = "close", skip_all)]
 async fn close_pr<T: RepositoryController + Sync + Send + 'static>(
     client: T,
     pr: u64,
@@ -213,6 +202,7 @@ async fn close_pr<T: RepositoryController + Sync + Send + 'static>(
     Ok(())
 }
 
+#[tracing::instrument(name = "synchronize", skip_all)]
 async fn synchronize_pr(
     client: impl RepositoryController,
     pr: u64,
