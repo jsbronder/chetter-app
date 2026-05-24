@@ -281,7 +281,9 @@ impl RepositoryController for RepositoryClient {
     }
 
     async fn matching_refs(&self, search: &str) -> Result<Vec<Ref>, ChetterError> {
-        let short_ns = &REF_NS[5..]; // Strip 'refs/'
+        let short_ns = REF_NS
+            .strip_prefix("refs/")
+            .expect("REF_NS does not start with refs/");
         let page = match self
             .crab
             .get(
