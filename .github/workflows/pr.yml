@@ -10,7 +10,7 @@ jobs:
       matrix:
         toolchain:
           - stable
-          - 1.88
+          - 1.91
     steps:
       - uses: actions/checkout@v4
       - name: toolchain
@@ -48,9 +48,9 @@ jobs:
           matrix: |
             [
               {"name": "lint", "command": "make lint", "toolchain": "stable"},
-              {"name": "lint", "command": "make lint", "toolchain": "1.88"},
+              {"name": "lint", "command": "make lint", "toolchain": "1.91"},
               {"name": "test", "command": "make test", "toolchain": "stable"},
-              {"name": "test", "command": "make test", "toolchain": "1.88"}
+              {"name": "test", "command": "make test", "toolchain": "1.91"}
             ]
 
   check:
