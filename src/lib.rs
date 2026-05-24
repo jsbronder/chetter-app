@@ -29,11 +29,8 @@ pub struct State {
 
 impl State {
     /// Create a new State using the specified configuration file
-    pub fn new(config_path: String) -> Result<Self, String> {
-        let app_client = match AppClient::new(config_path) {
-            Ok(v) => v,
-            Err(e) => return Err(format!("{e}")),
-        };
+    pub fn new(config_path: String) -> Result<Self, ChetterError> {
+        let app_client = AppClient::new(config_path)?;
         let tasks = TaskTracker::new();
         Ok(Self { app_client, tasks })
     }
