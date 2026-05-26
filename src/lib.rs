@@ -55,10 +55,11 @@ impl State {
     ///
     /// Handles PullRequest and PullRequestReview events, ignores all others.
     pub async fn webhook_dispatcher(&self, event: WebhookEvent) -> Result<(), ChetterError> {
-        // Early exit to avoid making a repo client when not necessary
-        match event.specific {
-            WebhookEventPayload::PullRequest(_) | WebhookEventPayload::PullRequestReview(_) => (),
-            _ => return Ok(()),
+        if !matches!(
+            event.specific,
+            WebhookEventPayload::PullRequest(_) | WebhookEventPayload::PullRequestReview(_)
+        ) {
+            return Ok(());
         }
 
         let repo_client = self.app_client.repo_client(&event).await?;
@@ -151,19 +152,21 @@ async fn on_pull_request_review(
         return Err(ChetterError::GithubParseError(msg.into()));
     };
 
-    match payload.review.state {
-        Some(ReviewState::Approved | ReviewState::ChangesRequested) => {
-            bookmark_pr(
-                repo_client,
-                payload.pull_request.number,
-                reviewer,
-                sha,
-                &payload.pull_request.base.sha,
-            )
-            .await
-        }
-        _ => Ok(()),
-    }
+    if !matches!(
+        payload.review.state,
+        Some(ReviewState::Approved | ReviewState::ChangesRequested)
+    ) {
+        return Ok(());
+    };
+
+    bookmark_pr(
+        repo_client,
+        payload.pull_request.number,
+        reviewer,
+        sha,
+        &payload.pull_request.base.sha,
+    )
+    .await
 }
 
 #[tracing::instrument(name = "open", skip_all)]
