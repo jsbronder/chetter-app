@@ -13,26 +13,25 @@ async fn post_github_events(
     headers: HeaderMap,
     body: String,
 ) -> Result<(), ChetterError> {
-    let event_type = match headers.get("X-Github-Event") {
-        Some(v) => match v.to_str() {
-            Ok(v) => v,
-            Err(error) => {
-                error!("Failed to parse X-Github-Event: {}", error);
-                headers.iter().for_each(|(k, v)| {
-                    debug!("{} = {}", k, v.to_str().unwrap_or("<error>"));
-                });
-                return Err(ChetterError::GithubParseError(format!(
-                    "Failed to parse X-Github-Event: {error}"
-                )));
-            }
-        },
-        None => {
-            let msg = "No X-Github-Event header";
-            error!(msg);
+    let Some(event_header) = headers.get("X-Github-Event") else {
+        let msg = "No X-Github-Event header";
+        error!(msg);
+        headers.iter().for_each(|(k, v)| {
+            debug!("{} = {}", k, v.to_str().unwrap_or("<error>"));
+        });
+        return Err(ChetterError::GithubParseError(msg.into()));
+    };
+
+    let event_type = match event_header.to_str() {
+        Ok(v) => v,
+        Err(error) => {
+            error!("Failed to parse X-Github-Event: {}", error);
             headers.iter().for_each(|(k, v)| {
                 debug!("{} = {}", k, v.to_str().unwrap_or("<error>"));
             });
-            return Err(ChetterError::GithubParseError(msg.into()));
+            return Err(ChetterError::GithubParseError(format!(
+                "Failed to parse X-Github-Event: {error}"
+            )));
         }
     };
 
