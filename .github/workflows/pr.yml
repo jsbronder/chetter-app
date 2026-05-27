@@ -42,7 +42,7 @@ jobs:
     outputs:
       matrix: ${{ steps.expand-matrix.outputs.matrix }}
     steps:
-      - uses: jsbronder/actions/expand-matrix@v2
+      - uses: jsbronder/actions/expand-matrix@v3
         id: expand-matrix
         with:
           matrix: |
@@ -85,7 +85,7 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ matrix.toolchain }}-${{ hashFiles('**/Cargo.lock') }}-${{ matrix.sha }}
           restore-keys: ${{ runner.os }}-cargo-${{ matrix.toolchain }}-${{ hashFiles('**/Cargo.lock') }}
       - name: rust-${{ matrix.toolchain }}-${{ matrix.name }}/${{ matrix.short_sha }}
-        uses: jsbronder/actions/test-commit@v2
+        uses: jsbronder/actions/test-commit@v3
         with:
           sha: ${{ matrix.sha }}
           context: check/rust-${{ matrix.toolchain }}-${{ matrix.name }}/${{ matrix.short_sha }}
