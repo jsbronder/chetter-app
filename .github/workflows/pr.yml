@@ -12,14 +12,14 @@ jobs:
           - stable
           - 1.91
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ matrix.toolchain }}
           components: clippy, rustfmt
       - name: cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/bin/
@@ -65,7 +65,7 @@ jobs:
         include: ${{ fromJson(needs.build-matrix.outputs.matrix) }}
     name: rust-${{ matrix.toolchain }}/${{ matrix.name }}/${{ matrix.short_sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: ${{ matrix.sha }}
       - name: toolchain
@@ -74,7 +74,7 @@ jobs:
           toolchain: ${{ matrix.toolchain }}
           components: clippy, rustfmt
       - name: cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/bin/

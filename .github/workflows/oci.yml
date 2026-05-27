@@ -24,7 +24,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: toolchain
         uses: dtolnay/rust-toolchain@stable
       - name: podman
