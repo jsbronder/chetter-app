@@ -18,7 +18,7 @@ pub struct GraphqlErrors {
 pub enum ChetterError {
     GithubParseError(String),
     IOError(std::io::Error),
-    JSONWebTokenError(jsonwebtoken::errors::Error),
+    JSONWebTokenError(octocrab::jsonwebtoken::errors::Error),
     Octocrab(octocrab::Error),
     TOMLParseError(toml::de::Error),
     JoinError(tokio::task::JoinError),
@@ -31,8 +31,8 @@ impl From<std::io::Error> for ChetterError {
     }
 }
 
-impl From<jsonwebtoken::errors::Error> for ChetterError {
-    fn from(error: jsonwebtoken::errors::Error) -> Self {
+impl From<octocrab::jsonwebtoken::errors::Error> for ChetterError {
+    fn from(error: octocrab::jsonwebtoken::errors::Error) -> Self {
         Self::JSONWebTokenError(error)
     }
 }

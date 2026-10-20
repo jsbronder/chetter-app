@@ -249,7 +249,6 @@ dependencies = [
  "axum",
  "getopts",
  "indoc",
- "jsonwebtoken",
  "mockall",
  "octocrab",
  "serde",

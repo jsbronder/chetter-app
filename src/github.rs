@@ -56,7 +56,7 @@ impl AppClient {
 
         let config_str = std::fs::read_to_string(config_path)?;
         let config: Config = toml::from_str(&config_str)?;
-        let key = jsonwebtoken::EncodingKey::from_rsa_pem(config.private_key.as_bytes())?;
+        let key = octocrab::EncodingKey::from_rsa_pem(config.private_key.as_bytes())?;
 
         let crab = Octocrab::builder().app(config.app_id.into(), key).build()?;
 
