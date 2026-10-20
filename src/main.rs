@@ -78,7 +78,7 @@ async fn main() {
     opts.optflag("h", "help", "print this help menu");
     opts.optopt("c", "config", "path to config file", "FILE");
     let matches = opts.parse(&args[1..]).unwrap_or_else(|err| {
-        eprintln!("Failed to parse commandline arguments: {}", &err);
+        eprintln!("Failed to parse commandline arguments: {}", err);
         std::process::exit(1);
     });
 
